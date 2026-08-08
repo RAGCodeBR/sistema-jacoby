@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
+import { createLocalPreviewAccount, hasLocalPreviewAccounts, isStaticPreview, signInLocalPreviewAccount, useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(() => isStaticPreview && !hasLocalPreviewAccounts() ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -32,6 +32,16 @@ function AuthPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      if (isStaticPreview) {
+        if (mode === "signup") {
+          await createLocalPreviewAccount({ fullName: name, email, password });
+          toast.success("Conta criada neste navegador.");
+        } else {
+          await signInLocalPreviewAccount({ email, password });
+          toast.success("Bem-vindo de volta!");
+        }
+        return;
+      }
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email,
@@ -97,7 +107,9 @@ function AuthPage() {
         <Card className="w-full max-w-md p-8 shadow-[var(--shadow-elegant)]">
           <h2 className="text-2xl font-bold">{mode === "signin" ? "Entrar" : "Criar conta"}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {mode === "signin" ? "Acesse seu painel de tarefas" : "Comece a organizar sua equipe"}
+            {isStaticPreview
+              ? (mode === "signin" ? "Acesso salvo somente neste navegador" : "Crie o acesso local desta instalação")
+              : (mode === "signin" ? "Acesse seu painel de tarefas" : "Comece a organizar sua equipe")}
           </p>
 
           {googleAuthEnabled && (
@@ -140,6 +152,11 @@ function AuthPage() {
               {mode === "signin" ? "Cadastre-se" : "Entrar"}
             </button>
           </p>
+          {isStaticPreview && (
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              Este acesso fica salvo apenas neste perfil do navegador, até a conexão do banco próprio.
+            </p>
+          )}
         </Card>
       </div>
     </div>

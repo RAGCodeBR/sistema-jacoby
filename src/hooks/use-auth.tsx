@@ -28,10 +28,64 @@ interface AuthCtx {
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
 
 // GitHub Pages can be opened before the new Supabase project is configured.
-// In that narrow case, expose an empty, device-local preview session so the
-// Jacoby team can inspect every screen without creating a real account.
-const isStaticPreview = import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
+// In that narrow case, authentication stays only in this browser profile.
+export const isStaticPreview = import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
 const previewPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "reports", "portal", "calendar", "users", "trash", "settings"];
+const localAccountsKey = "jacoby-local-accounts-v1";
+const localSessionKey = "jacoby-local-session-v1";
+const localAuthChanged = "jacoby-local-auth-changed";
+
+type LocalAccount = {
+  id: string;
+  fullName: string;
+  email: string;
+  passwordHash: string;
+};
+
+function getLocalAccounts(): LocalAccount[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(localStorage.getItem(localAccountsKey) ?? "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+async function hashLocalPassword(email: string, password: string) {
+  const bytes = new TextEncoder().encode(`${email.toLowerCase()}:${password}`);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function hasLocalPreviewAccounts() {
+  return getLocalAccounts().length > 0;
+}
+
+export async function createLocalPreviewAccount({ fullName, email, password }: { fullName: string; email: string; password: string }) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const accounts = getLocalAccounts();
+  if (accounts.some((account) => account.email === normalizedEmail)) throw new Error("Já existe uma conta com este e-mail neste navegador.");
+  const account: LocalAccount = {
+    id: `jacoby-local-${crypto.randomUUID()}`,
+    fullName: fullName.trim(),
+    email: normalizedEmail,
+    passwordHash: await hashLocalPassword(normalizedEmail, password),
+  };
+  localStorage.setItem(localAccountsKey, JSON.stringify([...accounts, account]));
+  localStorage.setItem(localSessionKey, account.id);
+  window.dispatchEvent(new Event(localAuthChanged));
+}
+
+export async function signInLocalPreviewAccount({ email, password }: { email: string; password: string }) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const account = getLocalAccounts().find((item) => item.email === normalizedEmail);
+  if (!account || account.passwordHash !== await hashLocalPassword(normalizedEmail, password)) {
+    throw new Error("E-mail ou senha inválidos neste navegador.");
+  }
+  localStorage.setItem(localSessionKey, account.id);
+  window.dispatchEvent(new Event(localAuthChanged));
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -70,12 +124,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isStaticPreview) {
-      setUser({ id: "jacoby-preview", email: "visualizacao@jacoby.local" } as User);
-      setProfile({ id: "jacoby-preview", full_name: "Jacoby Soluções", email: "visualizacao@jacoby.local", avatar_url: null, theme_preferences: null });
-      setIsAdmin(true);
-      setPermissions(previewPermissions);
-      setLoading(false);
-      return;
+      const restoreLocalSession = () => {
+        const account = getLocalAccounts().find((item) => item.id === localStorage.getItem(localSessionKey));
+        setSession(null);
+        setUser(account ? ({ id: account.id, email: account.email } as User) : null);
+        setProfile(account ? { id: account.id, full_name: account.fullName, email: account.email, avatar_url: null, theme_preferences: null } : null);
+        setIsAdmin(!!account);
+        setIsCollaborator(false);
+        setIsClient(false);
+        setClientId(null);
+        setPermissions(account ? previewPermissions : []);
+        setLoading(false);
+      };
+      restoreLocalSession();
+      window.addEventListener(localAuthChanged, restoreLocalSession);
+      return () => window.removeEventListener(localAuthChanged, restoreLocalSession);
     }
     // Supabase emits auth state changes after sign-in, sign-out and token refresh.
     // The timeout avoids updating profile data inside the auth callback stack.
@@ -104,7 +167,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    if (isStaticPreview) return;
+    if (isStaticPreview) {
+      localStorage.removeItem(localSessionKey);
+      window.dispatchEvent(new Event(localAuthChanged));
+      return;
+    }
     // Supabase clears the persisted browser session; the listener above resets local React state.
     await supabase.auth.signOut();
   };
@@ -127,4 +194,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-
