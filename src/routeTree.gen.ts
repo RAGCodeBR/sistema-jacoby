@@ -25,6 +25,7 @@ import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
+import { Route as AppPortalDocumentosRouteImport } from './routes/_app/portal.documentos'
 import { Route as AppPortalEntregasRouteImport } from './routes/_app/portal.entregas'
 import { Route as AppPortalFinanceiroRouteImport } from './routes/_app/portal.financeiro'
 import { Route as AppTasksIndexRouteImport } from './routes/_app/tasks.index'
@@ -112,6 +113,11 @@ const AppClientsNewRoute = AppClientsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AppClientsRoute,
 } as any)
+const AppPortalDocumentosRoute = AppPortalDocumentosRouteImport.update({
+  id: '/portal/documentos',
+  path: '/portal/documentos',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPortalEntregasRoute = AppPortalEntregasRouteImport.update({
   id: '/portal/entregas',
   path: '/portal/entregas',
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
   '/tasks/calendar': typeof AppTasksCalendarRoute
@@ -185,6 +192,7 @@ export interface FileRoutesByTo {
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
   '/tasks/calendar': typeof AppTasksCalendarRoute
@@ -211,6 +219,7 @@ export interface FileRoutesById {
   '/_app/users': typeof AppUsersRoute
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
+  '/_app/portal/documentos': typeof AppPortalDocumentosRoute
   '/_app/portal/entregas': typeof AppPortalEntregasRoute
   '/_app/portal/financeiro': typeof AppPortalFinanceiroRoute
   '/_app/tasks/calendar': typeof AppTasksCalendarRoute
@@ -237,6 +246,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/portal/documentos'
     | '/portal/entregas'
     | '/portal/financeiro'
     | '/tasks/calendar'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/portal/documentos'
     | '/portal/entregas'
     | '/portal/financeiro'
     | '/tasks/calendar'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/_app/users'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
+    | '/_app/portal/documentos'
     | '/_app/portal/entregas'
     | '/_app/portal/financeiro'
     | '/_app/tasks/calendar'
@@ -414,6 +426,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientsNewRouteImport
       parentRoute: typeof AppClientsRoute
     }
+    '/_app/portal/documentos': {
+      id: '/_app/portal/documentos'
+      path: '/portal/documentos'
+      fullPath: '/portal/documentos'
+      preLoaderRoute: typeof AppPortalDocumentosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/portal/entregas': {
       id: '/_app/portal/entregas'
       path: '/portal/entregas'
@@ -512,6 +531,7 @@ interface AppRouteChildren {
   AppTrashRoute: typeof AppTrashRoute
   AppUsersRoute: typeof AppUsersRoute
   AppClientReportClientIdRoute: typeof AppClientReportClientIdRoute
+  AppPortalDocumentosRoute: typeof AppPortalDocumentosRoute
   AppPortalEntregasRoute: typeof AppPortalEntregasRoute
   AppPortalFinanceiroRoute: typeof AppPortalFinanceiroRoute
 }
@@ -528,6 +548,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTrashRoute: AppTrashRoute,
   AppUsersRoute: AppUsersRoute,
   AppClientReportClientIdRoute: AppClientReportClientIdRoute,
+  AppPortalDocumentosRoute: AppPortalDocumentosRoute,
   AppPortalEntregasRoute: AppPortalEntregasRoute,
   AppPortalFinanceiroRoute: AppPortalFinanceiroRoute,
 }
