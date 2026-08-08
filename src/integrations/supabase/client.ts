@@ -10,8 +10,10 @@ import type { Database } from './types';
  * In GitHub Pages, Vite replaces VITE_* values during build time. That means
  * changing the Supabase project later requires rebuilding and redeploying Pages.
  */
-function createFallbackQueryBuilder(message: string) {
-  const error = new Error(message);
+function createFallbackQueryBuilder(message: string, isPreview = false) {
+  // The Pages preview is deliberately empty: returning successful empty
+  // collections lets every screen render without a database behind it.
+  const error = isPreview ? null : new Error(message);
 
   const builder = new Proxy(
     {
@@ -76,7 +78,12 @@ function createFallbackQueryBuilder(message: string) {
 
 function createFallbackSupabaseClient() {
   const message = 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to enable database features.';
-  const error = new Error(message);
+  const isPreview = import.meta.env.VITE_GITHUB_PAGES === 'true';
+  const error = isPreview ? null : new Error(message);
+  const channel = {
+    on: () => channel,
+    subscribe: () => channel,
+  };
 
   return {
     auth: {
@@ -90,7 +97,8 @@ function createFallbackSupabaseClient() {
       setSession: () => Promise.resolve({ error }),
       getClaims: () => Promise.resolve({ data: { claims: null }, error }),
     },
-    from: () => createFallbackQueryBuilder(message),
+    from: () => createFallbackQueryBuilder(message, isPreview),
+    channel: () => channel,
     storage: {
       from: () => ({
         upload: () => Promise.resolve({ data: null, error }),
