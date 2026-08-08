@@ -23,6 +23,8 @@ function AuthPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const googleAuthEnabled = import.meta.env.VITE_ENABLE_GOOGLE_AUTH === "true";
+  // GitHub Pages serves this app below /sistema-jacoby/.
+  const authRedirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
 
   useEffect(() => {
     if (user) navigate({ to: "/dashboard", replace: true });
@@ -47,7 +49,7 @@ function AuthPage() {
           email,
           password,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: authRedirectTo,
             data: { full_name: name },
           },
         });
@@ -70,7 +72,7 @@ function AuthPage() {
     // Supabase project has its own OAuth client configured. Email/password works now.
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: authRedirectTo },
     });
     if (error) toast.error("Falha ao entrar com Google");
   };
