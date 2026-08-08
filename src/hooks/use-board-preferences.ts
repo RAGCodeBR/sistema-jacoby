@@ -58,6 +58,23 @@ const DEFAULT_PREFS: BoardPreferences = {
   kanban_orientation: "vertical",
 };
 
+const storageKey = (userId: string) => `jacoby-board-preferences:${userId}`;
+
+function readLocalPreferences(userId: string | undefined): Partial<BoardPreferences> | null {
+  if (!userId || typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem(storageKey(userId));
+    return value ? (JSON.parse(value) as Partial<BoardPreferences>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalPreferences(userId: string | undefined, prefs: BoardPreferences) {
+  if (!userId || typeof window === "undefined") return;
+  window.localStorage.setItem(storageKey(userId), JSON.stringify(prefs));
+}
+
 function migrateChips(fields: string[]): CardField[] {
   const out: CardField[] = [];
   const push = (x: CardField) => {
@@ -96,20 +113,21 @@ export function useBoardPreferences() {
     enabled: !!user,
     queryFn: async (): Promise<BoardPreferences> => {
       if (!user) return DEFAULT_PREFS;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("board_preferences")
         .select("field_order, hidden_fields, interruption_color, kanban_orientation")
         .eq("user_id", user.id)
         .maybeSingle();
       const raw = data as Partial<BoardPreferences> | null;
-      const normalized = normalize(raw);
+      const normalized = normalize(error ? readLocalPreferences(user.id) : raw ?? readLocalPreferences(user.id));
+      saveLocalPreferences(user.id, normalized);
       // Self-heal: if stored field_order differs from normalized (duplicates, missing createdAt, legacy "chips"),
       // persist the cleaned version so future reorders are stable.
       const rawOrder = Array.isArray(raw?.field_order) ? (raw!.field_order as string[]) : [];
       const rawHidden = Array.isArray(raw?.hidden_fields) ? (raw!.hidden_fields as string[]) : [];
       const orderChanged = rawOrder.length !== normalized.field_order.length || rawOrder.some((v, i) => v !== normalized.field_order[i]);
       const hiddenChanged = rawHidden.length !== normalized.hidden_fields.length || rawHidden.some((v, i) => v !== normalized.hidden_fields[i]);
-      if (raw && (orderChanged || hiddenChanged)) {
+      if (!error && raw && (orderChanged || hiddenChanged)) {
         void supabase
           .from("board_preferences")
           .upsert({ user_id: user.id, ...normalized }, { onConflict: "user_id" })
@@ -133,7 +151,10 @@ export function useUpdateBoardPreferences() {
       const { error } = await supabase
         .from("board_preferences")
         .upsert({ user_id: user.id, ...next }, { onConflict: "user_id" });
-      if (error) throw error;
+      // GitHub Pages continues to work even if a legacy project schema blocks this optional preference.
+      // The browser copy is kept as a reliable fallback and is synchronized on the next successful save.
+      saveLocalPreferences(user.id, next);
+      if (error) return next;
       return next;
     },
     onMutate: async (patch) => {
