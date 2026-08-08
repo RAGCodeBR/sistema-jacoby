@@ -177,7 +177,10 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
     description: description || null,
     status,
     priority,
-    column_id: columnId || null,
+    // The clean board starts with standard columns. If the dialog was opened
+    // from the global “Nova tarefa” action, put the task in the first column
+    // instead of creating a task that has no Kanban location.
+    column_id: columnId || cols?.[0]?.id || null,
     client_id: clientId || null,
     assignee_id: assigneeId || null,
     due_date: deadlineToIso(dueDate),

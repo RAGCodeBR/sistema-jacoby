@@ -34,6 +34,7 @@ const previewPermissions = ["dashboard", "tasks", "notes", "import_ata", "client
 const localAccountsKey = "jacoby-local-accounts-v1";
 const localSessionKey = "jacoby-local-session-v1";
 const localAuthChanged = "jacoby-local-auth-changed";
+const localDataKey = "jacoby-local-data-v1";
 
 type LocalAccount = {
   id: string;
@@ -49,6 +50,30 @@ function getLocalAccounts(): LocalAccount[] {
     return Array.isArray(value) ? value : [];
   } catch {
     return [];
+  }
+}
+
+function ensureLocalBoard() {
+  try {
+    const database = JSON.parse(localStorage.getItem(localDataKey) ?? "{}");
+    if (!Array.isArray(database.kanban_columns) || database.kanban_columns.length === 0) {
+      const columns = [
+        ["A Fazer", "#64748b"],
+        ["Em Andamento", "#f59e0b"],
+        ["Aguardando Retorno", "#d4dd33"],
+        ["Em Revisão", "#38bdf8"],
+        ["Concluídas", "#22c55e"],
+      ].map(([name, color], position) => ({ id: `jacoby-local-column-${position}`, name, color, position, created_at: new Date().toISOString() }));
+      database.kanban_columns = columns;
+      database.tasks = (database.tasks ?? []).map((task: Record<string, unknown>) => task.column_id ? task : { ...task, column_id: columns[0].id });
+      localStorage.setItem(localDataKey, JSON.stringify(database));
+    }
+  } catch {
+    // A malformed local cache is safely rebuilt as an empty board.
+    localStorage.setItem(localDataKey, JSON.stringify({
+      kanban_columns: [{ id: "jacoby-local-column-0", name: "A Fazer", color: "#64748b", position: 0, created_at: new Date().toISOString() }],
+      tasks: [],
+    }));
   }
 }
 
@@ -73,6 +98,7 @@ export async function createLocalPreviewAccount({ fullName, email, password }: {
     passwordHash: await hashLocalPassword(normalizedEmail, password),
   };
   localStorage.setItem(localAccountsKey, JSON.stringify([...accounts, account]));
+  ensureLocalBoard();
   localStorage.setItem(localSessionKey, account.id);
   window.dispatchEvent(new Event(localAuthChanged));
 }
@@ -125,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isStaticPreview) {
       const restoreLocalSession = () => {
+        ensureLocalBoard();
         const account = getLocalAccounts().find((item) => item.id === localStorage.getItem(localSessionKey));
         setSession(null);
         setUser(account ? ({ id: account.id, email: account.email } as User) : null);
