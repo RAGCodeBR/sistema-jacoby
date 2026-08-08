@@ -794,7 +794,11 @@ function KanbanPage() {
         curr.map((t) => (t.id === taskId ? ({ ...t, ...patch } as Task) : t)),
       );
       const { error } = await supabase.from("tasks").update(patch).eq("id", taskId);
-      if (error) toast.error(error.message);
+      if (error) {
+        toast.error(error.message);
+        qc.invalidateQueries({ queryKey: ["tasks"] });
+        return;
+      }
       qc.invalidateQueries({ queryKey: ["tasks"] });
       toast.success("Tarefa concluída");
       return;
@@ -806,6 +810,7 @@ function KanbanPage() {
         status: "todo",
         completed_at: null,
         column_id: targetCol,
+        position: Math.max(0, targetIndex),
       };
       if (fallbackStatus?.id) patch.status_id = fallbackStatus.id;
       else patch.status_id = null;
@@ -813,7 +818,11 @@ function KanbanPage() {
         curr.map((t) => (t.id === taskId ? ({ ...t, ...patch } as Task) : t)),
       );
       const { error } = await supabase.from("tasks").update(patch).eq("id", taskId);
-      if (error) toast.error(error.message);
+      if (error) {
+        toast.error(error.message);
+        qc.invalidateQueries({ queryKey: ["tasks"] });
+        return;
+      }
       qc.invalidateQueries({ queryKey: ["tasks"] });
       toast.success("Tarefa restaurada");
       return;
@@ -849,19 +858,28 @@ function KanbanPage() {
       return [...filteredOrder, ...newOrders];
     });
 
-    // Persist: column change is GLOBAL; ordering is PER-USER
-    if (sourceCol !== targetCol) {
-      const { error } = await supabase
-        .from("tasks")
-        .update({ column_id: targetCol })
-        .eq("id", taskId);
-      if (error) toast.error(error.message);
+    // Persist a durable global fallback order. This also supports clean databases
+    // that do not yet have the optional user_task_order table.
+    const positionWrites = await Promise.all(
+      nextTargetList.map((item, position) =>
+        supabase
+          .from("tasks")
+          .update({ column_id: targetCol, position })
+          .eq("id", item.id),
+      ),
+    );
+    const positionError = positionWrites.find((result) => result.error)?.error;
+    if (positionError) {
+      toast.error(positionError.message);
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      return;
     }
     const rows = nextTargetList.map((t, i) => ({ user_id: user.id, task_id: t.id, position: i }));
     const { error: ordErr } = await supabase
       .from("user_task_order")
       .upsert(rows, { onConflict: "user_id,task_id" });
-    if (ordErr) toast.error(ordErr.message);
+    // Per-user ordering is optional; the global position above remains authoritative.
+    if (ordErr && ordErr.code !== "PGRST205") console.warn("Optional task order was not saved", ordErr.message);
     qc.invalidateQueries({ queryKey: ["tasks"] });
     qc.invalidateQueries({ queryKey: ["user_task_order"] });
   };

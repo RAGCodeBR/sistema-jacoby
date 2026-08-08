@@ -136,7 +136,8 @@ export function useClientInvoices() {
       const { data, error } = await (supabase.from("client_invoices") as any)
         .select("*")
         .order("due_date", { ascending: true });
-      if (error) throw error;
+      // Older Jacoby databases may not have this optional per-user layout table yet.
+      if (error) return [] as UserColumnOrder[];
       return (data ?? []) as ClientInvoice[];
     },
   });
@@ -154,7 +155,8 @@ export function useTasks() {
         .is("deleted_at", null)
         .order("position", { ascending: true })
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      // Task position still falls back to tasks.position when the optional table is absent.
+      if (error) return [] as UserTaskOrder[];
       return (data ?? []) as Task[];
     },
   });
@@ -201,7 +203,7 @@ export function useUserColumnOrder() {
         .from("user_column_order")
         .select("column_id, position")
         .eq("user_id", uid);
-      if (error) throw error;
+      if (error) return [] as UserColumnOrder[];
       return (data ?? []) as UserColumnOrder[];
     },
   });
@@ -219,7 +221,7 @@ export function useUserTaskOrder() {
         .from("user_task_order")
         .select("task_id, position")
         .eq("user_id", uid);
-      if (error) throw error;
+      if (error) return [] as UserTaskOrder[];
       return (data ?? []) as UserTaskOrder[];
     },
   });
