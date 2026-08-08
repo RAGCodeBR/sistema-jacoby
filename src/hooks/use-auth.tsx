@@ -27,6 +27,12 @@ interface AuthCtx {
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
 
+// GitHub Pages can be opened before the new Supabase project is configured.
+// In that narrow case, expose an empty, device-local preview session so the
+// Jacoby team can inspect every screen without creating a real account.
+const isStaticPreview = import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
+const previewPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "reports", "portal", "calendar", "users", "trash", "settings"];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -63,6 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (isStaticPreview) {
+      setUser({ id: "jacoby-preview", email: "visualizacao@jacoby.local" } as User);
+      setProfile({ id: "jacoby-preview", full_name: "Jacoby Soluções", email: "visualizacao@jacoby.local", avatar_url: null, theme_preferences: null });
+      setIsAdmin(true);
+      setPermissions(previewPermissions);
+      setLoading(false);
+      return;
+    }
     // Supabase emits auth state changes after sign-in, sign-out and token refresh.
     // The timeout avoids updating profile data inside the auth callback stack.
     const { data: sub } = supabase.auth.onAuthStateChange((_e: unknown, s: Session | null) => {
@@ -90,11 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    if (isStaticPreview) return;
     // Supabase clears the persisted browser session; the listener above resets local React state.
     await supabase.auth.signOut();
   };
 
   const refreshProfile = async () => {
+    if (isStaticPreview) return;
     if (user) await loadProfile(user.id);
   };
   const hasPermission = (permission: string) => isAdmin || permissions.includes(permission);
@@ -111,5 +127,4 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-
 
