@@ -10,68 +10,96 @@ import type { Database } from './types';
  * In GitHub Pages, Vite replaces VITE_* values during build time. That means
  * changing the Supabase project later requires rebuilding and redeploying Pages.
  */
-function createFallbackQueryBuilder(message: string, isPreview = false) {
-  // The Pages preview is deliberately empty: returning successful empty
-  // collections lets every screen render without a database behind it.
+const localDataKey = 'jacoby-local-data-v1';
+
+function readLocalData() {
+  if (typeof window === 'undefined') return {} as Record<string, any[]>;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(localDataKey) ?? '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {} as Record<string, any[]>;
+  }
+}
+
+function writeLocalData(data: Record<string, any[]>) {
+  localStorage.setItem(localDataKey, JSON.stringify(data));
+}
+
+function createFallbackQueryBuilder(message: string, isPreview = false, table = '') {
   const error = isPreview ? null : new Error(message);
+  const state: {
+    operation: 'select' | 'insert' | 'update' | 'delete';
+    payload: any;
+    filters: Array<(row: any) => boolean>;
+    orders: Array<{ field: string; ascending: boolean }>;
+    limit?: number;
+    range?: [number, number];
+    single: boolean;
+  } = { operation: 'select', payload: null, filters: [], orders: [], single: false };
 
-  const builder = new Proxy(
-    {
-      data: null,
-      error,
+  const execute = () => {
+    if (!isPreview) return { data: null, error };
+    const database = readLocalData();
+    const rows = Array.isArray(database[table]) ? database[table] : [];
+    const matches = (row: any) => state.filters.every((filter) => filter(row));
+    let result: any[];
+
+    if (state.operation === 'insert') {
+      const inserted = (Array.isArray(state.payload) ? state.payload : [state.payload]).map((row) => ({
+        ...row,
+        id: row.id ?? crypto.randomUUID(),
+        created_at: row.created_at ?? new Date().toISOString(),
+      }));
+      database[table] = [...rows, ...inserted];
+      writeLocalData(database);
+      result = inserted;
+    } else if (state.operation === 'update') {
+      result = rows.filter(matches).map((row) => ({ ...row, ...state.payload, updated_at: new Date().toISOString() }));
+      database[table] = rows.map((row) => matches(row) ? { ...row, ...state.payload, updated_at: new Date().toISOString() } : row);
+      writeLocalData(database);
+    } else if (state.operation === 'delete') {
+      result = rows.filter(matches);
+      database[table] = rows.filter((row) => !matches(row));
+      writeLocalData(database);
+    } else {
+      result = rows.filter(matches);
+    }
+
+    for (const order of state.orders) {
+      result.sort((a, b) => {
+        const left = a[order.field] ?? '';
+        const right = b[order.field] ?? '';
+        return (left > right ? 1 : left < right ? -1 : 0) * (order.ascending ? 1 : -1);
+      });
+    }
+    if (state.range) result = result.slice(state.range[0], state.range[1] + 1);
+    if (state.limit !== undefined) result = result.slice(0, state.limit);
+    return { data: state.single ? result[0] ?? null : result, error: null };
+  };
+
+  const builder = new Proxy({}, {
+    get(_target, prop) {
+      if (prop === 'then') return (resolve: (value: unknown) => void, reject?: (reason: unknown) => void) => Promise.resolve(execute()).then(resolve, reject);
+      if (prop === 'catch') return (callback: (reason: unknown) => unknown) => Promise.resolve(execute()).catch(callback);
+      if (prop === 'finally') return (callback: () => void) => Promise.resolve(execute()).finally(callback);
+      if (prop === 'select') return () => builder;
+      if (prop === 'insert' || prop === 'upsert') return (payload: any) => { state.operation = 'insert'; state.payload = payload; return builder; };
+      if (prop === 'update') return (payload: any) => { state.operation = 'update'; state.payload = payload; return builder; };
+      if (prop === 'delete') return () => { state.operation = 'delete'; return builder; };
+      if (prop === 'eq') return (field: string, value: unknown) => { state.filters.push((row) => row[field] === value); return builder; };
+      if (prop === 'in') return (field: string, values: unknown[]) => { state.filters.push((row) => values.includes(row[field])); return builder; };
+      if (prop === 'is') return (field: string, value: unknown) => { state.filters.push((row) => row[field] === value); return builder; };
+      if (prop === 'not') return (field: string, operator: string, value: unknown) => { if (operator === 'is') state.filters.push((row) => row[field] !== value); return builder; };
+      if (prop === 'match') return (values: Record<string, unknown>) => { state.filters.push((row) => Object.entries(values).every(([key, value]) => row[key] === value)); return builder; };
+      if (prop === 'order') return (field: string, options?: { ascending?: boolean }) => { state.orders.push({ field, ascending: options?.ascending !== false }); return builder; };
+      if (prop === 'limit') return (limit: number) => { state.limit = limit; return builder; };
+      if (prop === 'range') return (from: number, to: number) => { state.range = [from, to]; return builder; };
+      if (prop === 'single' || prop === 'maybeSingle') return () => { state.single = true; return Promise.resolve(execute()); };
+      if (prop === 'or' || prop === 'filter' || prop === 'contains' || prop === 'over') return () => builder;
+      return undefined;
     },
-    {
-      get(target, prop, receiver) {
-        if (prop === 'then') {
-          return (resolve: (value: unknown) => void) => resolve({ data: null, error });
-        }
-
-        if (prop === 'catch') {
-          return (callback: (error: Error) => unknown) => Promise.resolve({ data: null, error }).catch(callback);
-        }
-
-        if (prop === 'finally') {
-          return (callback: () => void) => Promise.resolve({ data: null, error }).finally(callback);
-        }
-
-        if (
-          prop === 'select' ||
-          prop === 'insert' ||
-          prop === 'update' ||
-          prop === 'delete' ||
-          prop === 'upsert' ||
-          prop === 'eq' ||
-          prop === 'in' ||
-          prop === 'order' ||
-          prop === 'limit' ||
-          prop === 'range' ||
-          prop === 'match' ||
-          prop === 'or' ||
-          prop === 'filter' ||
-          prop === 'not' ||
-          prop === 'is' ||
-          prop === 'contains' ||
-          prop === 'over'
-        ) {
-          return () => builder;
-        }
-
-        if (prop === 'single' || prop === 'maybeSingle') {
-          return () => Promise.resolve({ data: null, error });
-        }
-
-        if (prop === 'rpc') {
-          return () => Promise.resolve({ data: null, error });
-        }
-
-        if (prop in target) {
-          return Reflect.get(target, prop, receiver);
-        }
-
-        return undefined;
-      },
-    },
-  );
+  });
 
   return builder as any;
 }
@@ -97,7 +125,7 @@ function createFallbackSupabaseClient() {
       setSession: () => Promise.resolve({ error }),
       getClaims: () => Promise.resolve({ data: { claims: null }, error }),
     },
-    from: () => createFallbackQueryBuilder(message, isPreview),
+    from: (table: string) => createFallbackQueryBuilder(message, isPreview, table),
     channel: () => channel,
     storage: {
       from: () => ({

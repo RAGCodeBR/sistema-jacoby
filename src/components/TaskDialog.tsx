@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
-import { useAuth } from "@/hooks/use-auth";
+import { isStaticPreview, useAuth } from "@/hooks/use-auth";
 import { useClients, useColumns, useProfiles, type Task } from "@/hooks/use-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -189,6 +189,13 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
   // expired token. Database writes must use the live session so they are sent
   // as `authenticated`, not `anon` (which RLS correctly rejects).
   const getAuthenticatedUser = async () => {
+    if (isStaticPreview) {
+      if (!user) {
+        toast.error("Entre com sua conta local para criar uma tarefa.");
+        return null;
+      }
+      return { user, client: supabase };
+    }
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) {
       toast.error("Sua sessão expirou. Entre novamente para criar uma tarefa.");
