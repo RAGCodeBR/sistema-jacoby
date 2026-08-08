@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ClientDocumentsManager } from "@/components/ClientDocumentsManager";
 
 export const Route = createFileRoute("/_app/clients/$clientId/edit")({
   component: EditClientPage,
@@ -408,7 +409,7 @@ function EditClientPage() {
         <Tabs defaultValue="client">
           <TabsList>
             <TabsTrigger value="client">Dados do cliente</TabsTrigger>
-            <TabsTrigger value="departments">Departamentos</TabsTrigger>
+            <TabsTrigger value="departments">Controle de documentos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="client" className="mt-6">
@@ -538,7 +539,11 @@ function EditClientPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="departments" className="mt-6 space-y-4">
+          <TabsContent value="departments" className="mt-6">
+            <ClientDocumentsManager clientId={clientId} />
+          </TabsContent>
+
+          <TabsContent value="legacy-departments" className="hidden">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-semibold">Departamentos</h2>
