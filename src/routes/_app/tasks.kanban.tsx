@@ -1,3 +1,7 @@
+/**
+ * Gestão de Projetos: Kanban, filtros, ordenação, arrastar/soltar e conclusão de tarefas.
+ * Mantenha alterações de banco no hook de dados/migrations; esta tela orquestra a interface.
+ */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {

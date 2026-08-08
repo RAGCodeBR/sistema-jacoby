@@ -1,3 +1,7 @@
+/**
+ * Moldura compartilhada das telas internas: menu, identidade Jacoby, tema e notificações.
+ * Não contém regras de uma tela específica; novas áreas devem ser adicionadas em `allNav`.
+ */
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
