@@ -179,16 +179,16 @@ function CompletedColumn({ taskIds, count, children, orientation, minimal }: any
     id: `drop:${COMPLETED_COL_ID}`,
     data: { type: "column-drop", colId: COMPLETED_COL_ID },
   });
-  const isH = orientation === "horizontal";
+  const isVertical = orientation === "vertical";
   return (
-    <div className={isH ? (minimal ? "flex w-[clamp(15rem,18vw,19rem)] shrink-0 flex-col" : "flex w-72 shrink-0 flex-col") : "flex w-full flex-col"}>
+    <div className={isVertical ? (minimal ? "flex w-[clamp(15rem,18vw,19rem)] shrink-0 flex-col" : "flex w-72 shrink-0 flex-col") : "flex w-full flex-col"}>
       <div className="mb-2 flex items-center gap-1.5 px-1">
         <span className="h-3 w-3 rounded-full bg-emerald-500 dark:bg-emerald-400 dark:ring-2 dark:ring-emerald-200/40 dark:shadow-[0_0_12px_rgba(74,222,128,0.7)]" />
         <h3 className="font-semibold">Concluídas</h3>
         <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-900 dark:bg-emerald-400/25 dark:text-emerald-100 dark:ring-1 dark:ring-emerald-200/45 dark:shadow-[0_0_10px_rgba(74,222,128,0.32)]">
           {count}
         </span>
-        {!isH && (
+        {!isVertical && (
           <span className="ml-2 text-xs text-muted-foreground">
             Arraste tarefas aqui para concluir
           </span>
@@ -196,14 +196,14 @@ function CompletedColumn({ taskIds, count, children, orientation, minimal }: any
       </div>
       <SortableContext
         items={taskIds}
-        strategy={isH ? verticalListSortingStrategy : horizontalListSortingStrategy}
+        strategy={isVertical ? verticalListSortingStrategy : horizontalListSortingStrategy}
       >
         <div
           ref={setNodeRef}
           className={`rounded-lg border-2 border-solid p-2 transition ${
-            isH ? "flex flex-col gap-2" : "flex flex-nowrap items-start gap-2 overflow-x-auto pb-2"
+            isVertical ? "flex flex-col gap-2" : "flex flex-nowrap items-start gap-2 overflow-x-auto pb-2"
           } ${isOver ? "border-emerald-500 bg-emerald-500/10" : "border-emerald-500/30 bg-emerald-500/5"}`}
-          style={{ minHeight: isH ? 200 : 120 }}
+          style={{ minHeight: isVertical ? 200 : 120 }}
         >
           {children}
         </div>
@@ -243,13 +243,13 @@ function SortableColumn({
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
-  const isH = orientation === "horizontal";
+  const isVertical = orientation === "vertical";
 
   return (
     <div
       ref={setSortRef}
       style={style}
-      className={isH ? (minimal ? "flex w-[clamp(15rem,18vw,19rem)] shrink-0 flex-col" : "flex w-fit min-w-72 shrink-0 flex-col") : "flex w-full flex-col"}
+      className={isVertical ? (minimal ? "flex w-[clamp(15rem,18vw,19rem)] shrink-0 flex-col" : "flex w-fit min-w-72 shrink-0 flex-col") : "flex w-full flex-col"}
     >
       <div className="mb-2 flex items-center justify-between px-1">
         <div className="flex items-center gap-1.5">
@@ -314,15 +314,15 @@ function SortableColumn({
       </div>
       <SortableContext
         items={taskIds}
-        strategy={isH ? verticalListSortingStrategy : horizontalListSortingStrategy}
+        strategy={isVertical ? verticalListSortingStrategy : horizontalListSortingStrategy}
       >
         <div
           ref={setDropRef}
           className={`rounded-lg border-2 border-solid border-l-4 p-2 transition ${
-            isH ? "flex flex-col gap-3" : "flex flex-nowrap items-start gap-4 overflow-x-auto pb-2"
+            isVertical ? "flex flex-col gap-3" : "flex flex-nowrap items-start gap-4 overflow-x-auto pb-2"
           } ${isOver ? "border-primary bg-primary/5" : "border-transparent bg-muted/40"}`}
           style={{
-            minHeight: isH ? 200 : 120,
+            minHeight: isVertical ? 200 : 120,
             borderLeftColor: col.color || "#1e3a8a",
           }}
         >
@@ -1361,14 +1361,14 @@ function KanbanPage() {
           <SortableContext
             items={columnIds}
             strategy={
-              orientation === "horizontal"
+              orientation === "vertical"
                 ? horizontalListSortingStrategy
                 : verticalListSortingStrategy
             }
           >
             <div
               className={
-                orientation === "horizontal"
+                orientation === "vertical"
                   ? "flex flex-row items-start gap-4"
                   : "flex flex-col gap-4"
               }
@@ -1612,7 +1612,7 @@ function KanbanScrollArea({
   // Wheel vertical → scroll horizontal quando estiver no modo horizontal
   useEffect(() => {
     const el = mainRef.current;
-    if (!el || orientation !== "horizontal") return;
+    if (!el || orientation !== "vertical") return;
     const onWheel = (e: WheelEvent) => {
       // se não há overflow horizontal, ignora
       if (el.scrollWidth <= el.clientWidth) return;

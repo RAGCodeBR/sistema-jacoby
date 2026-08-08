@@ -27,7 +27,7 @@ function useTheme() {
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
 const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/tasks", label: "Minhas Tarefas", icon: ListChecks },
+  { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks },
   { to: "/notes", label: "Anotações", icon: NotebookPen },
   { to: "/import-ata", label: "Importar Ata", icon: FileUp },
   { to: "/clients", label: "Clientes", icon: Building2 },
