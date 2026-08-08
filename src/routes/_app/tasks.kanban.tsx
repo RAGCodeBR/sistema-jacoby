@@ -357,9 +357,13 @@ function KanbanPage() {
   const { data: boardPrefs } = useBoardPreferences();
   const { data: allSubtasks = [] } = useSubtasks();
   const updatePrefs = useUpdateBoardPreferences();
-  const orientation = boardPrefs?.kanban_orientation ?? "vertical";
+  const [orientation, setOrientation] = useState<"horizontal" | "vertical">("vertical");
   const minimalCardsStorageKey = `kanban-minimal-cards:${user?.id ?? "anonymous"}`;
   const [minimalCards, setMinimalCards] = useState(false);
+
+  useEffect(() => {
+    if (boardPrefs?.kanban_orientation) setOrientation(boardPrefs.kanban_orientation);
+  }, [boardPrefs?.kanban_orientation]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1215,11 +1219,20 @@ function KanbanPage() {
                 size="sm"
                 variant="outline"
                 className="h-7 gap-1"
-                onClick={() =>
-                  updatePrefs.mutate({
-                    kanban_orientation: orientation === "horizontal" ? "vertical" : "horizontal",
-                  })
-                }
+                onClick={() => {
+                  const previous = orientation;
+                  const next = previous === "horizontal" ? "vertical" : "horizontal";
+                  setOrientation(next);
+                  updatePrefs.mutate(
+                    { kanban_orientation: next },
+                    {
+                      onError: () => {
+                        setOrientation(previous);
+                        toast.error("Não foi possível salvar a visualização escolhida.");
+                      },
+                    },
+                  );
+                }}
                 title={
                   orientation === "horizontal" ? "Mudar para vertical" : "Mudar para horizontal"
                 }
