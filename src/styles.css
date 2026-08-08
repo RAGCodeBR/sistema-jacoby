@@ -51,79 +51,79 @@
 
 :root {
   --radius: 0.75rem;
-  /* Azul-marinho escuro como tema base */
-  --background: oklch(0.98 0.005 250);
-  --foreground: oklch(0.18 0.04 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.04 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.04 260);
+  /* Identidade Jacoby: branco orgânico, verde folha e amarelo borboleta. */
+  --background: #fbfcf8;
+  --foreground: #334334;
+  --card: #ffffff;
+  --card-foreground: #334334;
+  --popover: #ffffff;
+  --popover-foreground: #334334;
 
-  --primary: oklch(0.28 0.09 264);
-  --primary-foreground: oklch(0.98 0.005 250);
-  --primary-glow: oklch(0.45 0.16 264);
+  --primary: #347a2b;
+  --primary-foreground: #ffffff;
+  --primary-glow: #66a947;
 
-  --secondary: oklch(0.95 0.012 250);
-  --secondary-foreground: oklch(0.28 0.09 264);
-  --muted: oklch(0.95 0.012 250);
-  --muted-foreground: oklch(0.5 0.03 260);
-  --accent: oklch(0.93 0.03 250);
-  --accent-foreground: oklch(0.28 0.09 264);
+  --secondary: #f4f8ef;
+  --secondary-foreground: #42663a;
+  --muted: #f5f7f2;
+  --muted-foreground: #71806f;
+  --accent: #e2f2d7;
+  --accent-foreground: #326a2b;
 
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.98 0 0);
-  --success: oklch(0.62 0.16 155);
-  --warning: oklch(0.78 0.16 75);
-  --info: oklch(0.62 0.18 240);
+  --success: #4e9b54;
+  --warning: #e6ad4b;
+  --info: #4da9d6;
 
-  --border: oklch(0.9 0.012 250);
-  --input: oklch(0.92 0.012 250);
-  --ring: oklch(0.45 0.16 264);
+  --border: #e3e9df;
+  --input: #e8eee4;
+  --ring: #67a947;
 
-  --chart-1: oklch(0.45 0.16 264);
-  --chart-2: oklch(0.62 0.16 155);
-  --chart-3: oklch(0.78 0.16 75);
-  --chart-4: oklch(0.58 0.22 27);
-  --chart-5: oklch(0.55 0.2 310);
+  --chart-1: #347a2b;
+  --chart-2: #75a743;
+  --chart-3: #e5b450;
+  --chart-4: #db795e;
+  --chart-5: #66b5a6;
 
-  --sidebar: oklch(0.22 0.07 264);
-  --sidebar-foreground: oklch(0.92 0.012 250);
-  --sidebar-primary: oklch(0.55 0.18 240);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.28 0.08 264);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.3 0.06 264);
-  --sidebar-ring: oklch(0.55 0.18 240);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #5e6d5e;
+  --sidebar-primary: #347a2b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e0f1d5;
+  --sidebar-accent-foreground: #347a2b;
+  --sidebar-border: #e3e9df;
+  --sidebar-ring: #67a947;
 
-  --gradient-primary: linear-gradient(135deg, var(--primary), var(--primary-glow));
-  --gradient-sidebar: linear-gradient(180deg, oklch(0.22 0.07 264), oklch(0.18 0.06 264));
+  --gradient-primary: linear-gradient(135deg, #347a2b, #4d963b);
+  --gradient-sidebar: linear-gradient(180deg, #ffffff, #fbfcf8);
   --shadow-elegant: 0 10px 30px -10px color-mix(in oklab, var(--primary) 30%, transparent);
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
 }
 
 .dark {
-  --background: oklch(0.15 0.03 264);
-  --foreground: oklch(0.95 0.01 250);
-  --card: oklch(0.2 0.05 264);
-  --card-foreground: oklch(0.95 0.01 250);
-  --popover: oklch(0.2 0.05 264);
-  --popover-foreground: oklch(0.95 0.01 250);
-  --primary: oklch(0.6 0.18 250);
-  --primary-foreground: oklch(0.1 0.03 264);
-  --primary-glow: oklch(0.7 0.2 250);
-  --secondary: oklch(0.25 0.05 264);
-  --secondary-foreground: oklch(0.95 0.01 250);
-  --muted: oklch(0.25 0.05 264);
-  --muted-foreground: oklch(0.7 0.03 250);
-  --accent: oklch(0.3 0.06 264);
-  --accent-foreground: oklch(0.95 0.01 250);
-  --border: oklch(0.3 0.05 264);
-  --input: oklch(0.3 0.05 264);
-  --ring: oklch(0.6 0.18 250);
-  --sidebar: oklch(0.12 0.03 264);
-  --sidebar-foreground: oklch(0.9 0.01 250);
-  --sidebar-accent: oklch(0.2 0.05 264);
-  --sidebar-border: oklch(0.25 0.05 264);
+  --background: #172317;
+  --foreground: #edf4e9;
+  --card: #203120;
+  --card-foreground: #edf4e9;
+  --popover: #203120;
+  --popover-foreground: #edf4e9;
+  --primary: #82c665;
+  --primary-foreground: #102010;
+  --primary-glow: #a2dd7d;
+  --secondary: #293b29;
+  --secondary-foreground: #edf4e9;
+  --muted: #293b29;
+  --muted-foreground: #adbcaa;
+  --accent: #344f34;
+  --accent-foreground: #edf4e9;
+  --border: #3b503b;
+  --input: #3b503b;
+  --ring: #82c665;
+  --sidebar: #162216;
+  --sidebar-foreground: #d9e6d5;
+  --sidebar-accent: #2a3f2a;
+  --sidebar-border: #324632;
 }
 
 /* Os seletores de data são nativos do navegador; force ícones claros no tema escuro. */
