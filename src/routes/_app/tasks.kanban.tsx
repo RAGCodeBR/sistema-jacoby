@@ -441,8 +441,6 @@ function KanbanPage() {
     color: string;
   }>({ open: false, id: null, name: "", color: "#1e3a8a" });
 
-  const completedStatus = useMemo(() => statuses.find((s) => s.is_completed) ?? null, [statuses]);
-  const fallbackStatus = useMemo(() => statuses.find((s) => !s.is_completed) ?? null, [statuses]);
 
   const { data: tagLinks = [] } = useTaskTagLinks();
 
@@ -789,7 +787,6 @@ function KanbanPage() {
         status: "done",
         completed_at: new Date().toISOString(),
       };
-      if (completedStatus?.id) patch.status_id = completedStatus.id;
       qc.setQueryData<Task[]>(["tasks"], (curr = []) =>
         curr.map((t) => (t.id === taskId ? ({ ...t, ...patch } as Task) : t)),
       );
@@ -812,8 +809,6 @@ function KanbanPage() {
         column_id: targetCol,
         position: Math.max(0, targetIndex),
       };
-      if (fallbackStatus?.id) patch.status_id = fallbackStatus.id;
-      else patch.status_id = null;
       qc.setQueryData<Task[]>(["tasks"], (curr = []) =>
         curr.map((t) => (t.id === taskId ? ({ ...t, ...patch } as Task) : t)),
       );
@@ -944,7 +939,6 @@ function KanbanPage() {
         assignee_id: task.assignee_id,
         due_date: new Date(`${dueDate}T12:00:00`).toISOString(),
         color: task.color,
-        status_id: task.status_id,
         completed_at: null,
         created_by: user.id,
         position: 9999,
