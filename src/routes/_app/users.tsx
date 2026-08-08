@@ -46,12 +46,22 @@ function UsersPage() {
   const { data: permissionRows = [] } = useQuery({ queryKey: ["user_permissions"], queryFn: async () => ((await (supabase.from("user_permissions") as any).select("user_id, permissions")).data ?? []) as { user_id: string; permissions: string[] }[] });
   const invokeAccessManager = async (action: "create" | "update", data: Record<string, unknown>) => {
     const { data: result, error } = await supabase.functions.invoke("admin-user-access", { body: { action, data } });
-    if (error) throw error;
+    if (error) {
+      const response = (error as any).context;
+      if (response && typeof response.json === "function") {
+        const payload = await response.json().catch(() => null);
+        if (payload?.error) throw new Error(payload.error);
+      }
+      throw error;
+    }
     if (result?.error) throw new Error(result.error);
     return result;
   };
   const refresh = () => { qc.invalidateQueries({ queryKey: ["profiles"] }); qc.invalidateQueries({ queryKey: ["roles"] }); qc.invalidateQueries({ queryKey: ["user_permissions"] }); qc.invalidateQueries({ queryKey: ["client_user_links"] }); };
-  const createMutation = useMutation({ mutationFn: () => invokeAccessManager("create", form), onSuccess: () => { refresh(); setCreateOpen(false); setForm(defaults); toast.success("Acesso criado com sucesso."); }, onError: (e: any) => toast.error(e?.message ?? "Erro ao criar acesso") });
+  const createMutation = useMutation({ mutationFn: () => {
+    if (form.role === "client" && !form.clientId) throw new Error("Selecione o cliente que será vinculado ao acesso do portal.");
+    return invokeAccessManager("create", form);
+  }, onSuccess: () => { refresh(); setCreateOpen(false); setForm(defaults); toast.success("Acesso criado com sucesso."); }, onError: (e: any) => toast.error(e?.message ?? "Erro ao criar acesso") });
   const updateMutation = useMutation({ mutationFn: () => invokeAccessManager("update", { userId: editing!, role: form.role, permissions: form.permissions, clientId: form.clientId || null }), onSuccess: () => { refresh(); setEditing(null); toast.success("Acessos atualizados."); }, onError: (e: any) => toast.error(e?.message ?? "Erro ao atualizar acessos") });
   const setActive = useMutation({ mutationFn: async ({ userId, active }: { userId: string; active: boolean }) => { const { error } = await (supabase.from("profiles") as any).update({ is_active: active }).eq("id", userId); if (error) throw error; }, onSuccess: () => { qc.invalidateQueries({ queryKey: ["profiles"] }); toast.success("Status atualizado"); }, onError: (e: any) => toast.error(e.message) });
   const activeProfiles = useMemo(() => profiles.filter((p) => (p as any).is_active !== false), [profiles]); const inactiveProfiles = useMemo(() => profiles.filter((p) => (p as any).is_active === false), [profiles]);
