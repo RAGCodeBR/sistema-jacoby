@@ -126,6 +126,9 @@ function createFallbackSupabaseClient() {
       getClaims: () => Promise.resolve({ data: { claims: null }, error }),
     },
     from: (table: string) => createFallbackQueryBuilder(message, isPreview, table),
+    // Keep optional background jobs from breaking the interface if the client
+    // is opened without environment settings (for example in a static preview).
+    rpc: () => Promise.resolve({ data: null, error }),
     channel: () => channel,
     storage: {
       from: () => ({
