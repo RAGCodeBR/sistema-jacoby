@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createLocalPreviewAccount, hasLocalPreviewAccounts, isStaticPreview, signInLocalPreviewAccount, useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import jacobyLogoTransparent from "@/assets/jacoby-logo-transparent.png";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
@@ -85,7 +86,7 @@ function AuthPage() {
         <div className="flex items-center">
           {/* Full transparent brand asset: avoids the previous broken icon and duplicated name. */}
           <img
-            src="/jacoby-logo-transparent.png"
+            src={jacobyLogoTransparent}
             alt="Jacoby Soluções"
             className="h-auto w-52 object-contain object-left"
           />
