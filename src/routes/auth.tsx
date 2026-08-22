@@ -82,9 +82,13 @@ function AuthPage() {
       <div className="relative hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12"
         style={{ background: "var(--gradient-sidebar)" }}
       >
-        <div className="flex items-center gap-2">
-          <img src="/jacoby-logo.webp" alt="Jacoby Soluções" className="h-12 w-12 rounded-xl object-contain" />
-          <span className="text-xl font-semibold tracking-tight">Jacoby Soluções</span>
+        <div className="flex items-center">
+          {/* Full transparent brand asset: avoids the previous broken icon and duplicated name. */}
+          <img
+            src="/jacoby-logo-transparent.png"
+            alt="Jacoby Soluções"
+            className="h-auto w-52 object-contain object-left"
+          />
         </div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <h1 className="text-4xl font-bold leading-tight">
