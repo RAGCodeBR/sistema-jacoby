@@ -5,6 +5,7 @@ import { ptBR } from "date-fns/locale";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   useTasks,
@@ -47,6 +48,7 @@ function ListPage() {
   );
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Task | null>(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 
   // Auto-open a task when arriving with ?task=<id>
   useEffect(() => {
@@ -132,6 +134,37 @@ function ListPage() {
     toast.success("Tarefa movida para a lixeira.");
   };
 
+  const toggleTaskSelection = (taskId: string, checked: boolean) => {
+    setSelectedTaskIds((current) => {
+      const next = new Set(current);
+      checked ? next.add(taskId) : next.delete(taskId);
+      return next;
+    });
+  };
+
+  const selectAllVisibleTasks = (checked: boolean) => {
+    setSelectedTaskIds(checked ? new Set(list.map((task) => task.id)) : new Set());
+  };
+
+  const moveSelectedToTrash = async () => {
+    const ids = [...selectedTaskIds].filter((id) => list.some((task) => task.id === id));
+    if (!ids.length) return;
+    if (!confirm(`Mover ${ids.length} tarefa(s) selecionada(s) para a lixeira?`)) return;
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
+      .in("id", ids);
+    if (error) return toast.error(error.message);
+
+    setSelectedTaskIds(new Set());
+    await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    await queryClient.invalidateQueries({ queryKey: ["tasks", "deleted"] });
+    toast.success(`${ids.length} tarefa(s) movida(s) para a lixeira.`);
+  };
+
+  const allVisibleSelected = list.length > 0 && list.every((task) => selectedTaskIds.has(task.id));
+
   return (
     <div className="space-y-4 p-6">
       <header className="flex items-center justify-end gap-3 flex-wrap">
@@ -147,10 +180,26 @@ function ListPage() {
       </header>
       <TaskFilters filters={filters} onChange={setFilters} />
 
+      {selectedTaskIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+          <span>{selectedTaskIds.size} tarefa(s) selecionada(s)</span>
+          <Button size="sm" variant="destructive" onClick={() => void moveSelectedToTrash()}>
+            <Trash2 className="mr-2 h-4 w-4" />Mover para a lixeira
+          </Button>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border bg-card">
         <table className="w-full table-fixed border-collapse text-xs">
           <thead className="border-b bg-muted/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
+              <th className="w-10 border-r px-2 py-2 text-center">
+                <Checkbox
+                  aria-label="Selecionar todas as tarefas visíveis"
+                  checked={allVisibleSelected}
+                  onCheckedChange={(checked) => selectAllVisibleTasks(checked === true)}
+                />
+              </th>
               <th className="w-[29%] border-r px-2 py-2">Tarefa</th>
               <th className="w-[11%] border-r px-2 py-2">Cliente</th>
               <th className="w-[13%] border-r px-2 py-2">Responsável</th>
@@ -164,7 +213,7 @@ function ListPage() {
           <tbody>
             {list.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-muted-foreground">
+                <td colSpan={9} className="py-10 text-center text-muted-foreground">
                   Nenhuma tarefa
                 </td>
               </tr>
@@ -184,6 +233,13 @@ function ListPage() {
                     setOpen(true);
                   }}
                 >
+                  <td className="border-r px-2 py-2 text-center" onClick={(event) => event.stopPropagation()}>
+                    <Checkbox
+                      aria-label={`Selecionar tarefa ${t.title}`}
+                      checked={selectedTaskIds.has(t.id)}
+                      onCheckedChange={(checked) => toggleTaskSelection(t.id, checked === true)}
+                    />
+                  </td>
                   <td className="border-r px-2 py-2 font-medium"><span className="block truncate">{t.title}</span></td>
                   <td className="border-r px-2 py-2">
                     {client ? (

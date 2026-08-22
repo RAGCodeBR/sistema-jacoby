@@ -5,8 +5,10 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useDeletedTasks, useClients, useProfiles } from "@/hooks/use-data";
 import { useAuth } from "@/hooks/use-auth";
+import { useState } from "react";
 
 export const Route = createFileRoute("/_app/trash")({
   component: TrashPage,
@@ -21,6 +23,7 @@ function TrashPage() {
   const canDeleteTask = (task: (typeof tasks)[number]) =>
     !!isAdmin || task.created_by === user?.id;
   const deletableTasks = tasks.filter(canDeleteTask);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 
   const restore = async (id: string) => {
     const { error } = await supabase
@@ -50,6 +53,32 @@ function TrashPage() {
     qc.invalidateQueries({ queryKey: ["tasks", "deleted"] });
   };
 
+  const toggleTaskSelection = (taskId: string, checked: boolean) => {
+    setSelectedTaskIds((current) => {
+      const next = new Set(current);
+      checked ? next.add(taskId) : next.delete(taskId);
+      return next;
+    });
+  };
+
+  const selectAllDeletableTasks = (checked: boolean) => {
+    setSelectedTaskIds(checked ? new Set(deletableTasks.map((task) => task.id)) : new Set());
+  };
+
+  const purgeSelected = async () => {
+    const ids = [...selectedTaskIds].filter((id) => deletableTasks.some((task) => task.id === id));
+    if (!ids.length) return;
+    if (!confirm(`Excluir permanentemente ${ids.length} tarefa(s) selecionada(s)? Esta ação não pode ser desfeita.`)) return;
+
+    const { error } = await supabase.from("tasks").delete().in("id", ids);
+    if (error) return toast.error(error.message);
+    setSelectedTaskIds(new Set());
+    toast.success(`${ids.length} tarefa(s) excluída(s) permanentemente.`);
+    qc.invalidateQueries({ queryKey: ["tasks", "deleted"] });
+  };
+
+  const allDeletableSelected = deletableTasks.length > 0 && deletableTasks.every((task) => selectedTaskIds.has(task.id));
+
   return (
     <div className="p-6">
       <header className="mb-4 flex items-center justify-between gap-4">
@@ -59,11 +88,18 @@ function TrashPage() {
             Tarefas excluídas. Restaure ou apague permanentemente.
           </p>
         </div>
-        {deletableTasks.length > 0 && (
-          <Button variant="destructive" onClick={purgeAll}>
-            <Trash2 className="mr-2 h-4 w-4" />Esvaziar lixeira
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {selectedTaskIds.size > 0 && (
+            <Button variant="destructive" onClick={() => void purgeSelected()}>
+              <Trash2 className="mr-2 h-4 w-4" />Excluir selecionadas ({selectedTaskIds.size})
+            </Button>
+          )}
+          {deletableTasks.length > 0 && (
+            <Button variant="outline" onClick={purgeAll}>
+              <Trash2 className="mr-2 h-4 w-4" />Esvaziar lixeira
+            </Button>
+          )}
+        </div>
       </header>
 
       {isLoading ? (
@@ -77,6 +113,13 @@ function TrashPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
+                <th className="w-10 px-3 py-2 text-center">
+                  <Checkbox
+                    aria-label="Selecionar todas as tarefas da lixeira que podem ser excluídas"
+                    checked={allDeletableSelected}
+                    onCheckedChange={(checked) => selectAllDeletableTasks(checked === true)}
+                  />
+                </th>
                 <th className="px-3 py-2 text-left">Título</th>
                 <th className="px-3 py-2 text-left">Cliente</th>
                 <th className="px-3 py-2 text-left">Responsável</th>
@@ -90,6 +133,15 @@ function TrashPage() {
                 const a = profiles.find((p) => p.id === t.assignee_id);
                 return (
                   <tr key={t.id} className="border-t">
+                    <td className="px-3 py-2 text-center">
+                      {canDeleteTask(t) && (
+                        <Checkbox
+                          aria-label={`Selecionar tarefa ${t.title}`}
+                          checked={selectedTaskIds.has(t.id)}
+                          onCheckedChange={(checked) => toggleTaskSelection(t.id, checked === true)}
+                        />
+                      )}
+                    </td>
                     <td className="px-3 py-2 font-medium">{t.title}</td>
                     <td className="px-3 py-2 text-muted-foreground">{c?.name ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{a?.full_name ?? a?.email ?? "—"}</td>
