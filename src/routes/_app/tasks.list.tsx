@@ -12,7 +12,6 @@ import {
   useClients,
   useProfiles,
   useSubtasks,
-  useTaskStatuses,
   useTaskCollaborators,
   type Task,
 } from "@/hooks/use-data";
@@ -37,7 +36,6 @@ function ListPage() {
   const { data: clients = [] } = useClients();
   const { data: profiles = [] } = useProfiles();
   const { data: subtasks = [] } = useSubtasks();
-  const { data: statuses = [] } = useTaskStatuses();
   const { data: collaborators = [] } = useTaskCollaborators();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -105,18 +103,10 @@ function ListPage() {
   }, [tasks, filters, user?.id, subtaskAssigneeTaskIds, collaboratorTaskIds, subtaskAssigneeTaskIdsByUser]);
 
   const completeTask = async (taskId: string) => {
-    const completedStatus = statuses.find((status) => status.is_completed);
-
-    if (!completedStatus) {
-      toast.error("Cadastre um status marcado como concluído.");
-      return;
-    }
-
     const { error } = await supabase
       .from("tasks")
       .update({
         status: "done",
-        status_id: completedStatus.id,
         completed_at: new Date().toISOString(),
       })
       .eq("id", taskId);
