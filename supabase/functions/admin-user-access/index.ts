@@ -49,6 +49,21 @@ export default {
     const payload = await request.json();
     const action = payload?.action;
     const data = payload?.data ?? {};
+
+    // Administrators can replace a password directly from the Users screen.
+    // This never reveals the existing password and does not send an e-mail.
+    if (action === "reset_password") {
+      if (!validUuid(data.userId)) return response({ error: "Usuário inválido." }, 400);
+      if (typeof data.password !== "string" || data.password.length < 6) {
+        return response({ error: "A nova senha deve ter ao menos 6 caracteres." }, 400);
+      }
+      const { error: passwordError } = await admin.auth.admin.updateUserById(data.userId, {
+        password: data.password,
+      });
+      if (passwordError) throw passwordError;
+      return response({ ok: true });
+    }
+
     const role = data.role;
     if (!['admin', 'collaborator', 'client'].includes(role)) return response({ error: "Categoria de acesso inválida." }, 400);
     if (role === "client" && !validUuid(data.clientId)) return response({ error: "Selecione o cliente que será vinculado a este acesso." }, 400);
