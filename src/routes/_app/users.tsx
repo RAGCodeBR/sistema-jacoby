@@ -57,7 +57,7 @@ function UsersPage() {
   });
   const { data: clientLinks = [] } = useQuery({ queryKey: ["client_user_links"], queryFn: async () => ((await (supabase.from("client_user_links" as any) as any).select("user_id, client_id")).data ?? []) as { user_id: string; client_id: string }[] });
   const { data: permissionRows = [] } = useQuery({ queryKey: ["user_permissions"], queryFn: async () => ((await (supabase.from("user_permissions") as any).select("user_id, permissions")).data ?? []) as { user_id: string; permissions: string[] }[] });
-  const invokeAccessManager = async (action: "create" | "update" | "reset_password", data: Record<string, unknown>) => {
+  const invokeAccessManager = async (action: "create" | "update", data: Record<string, unknown>) => {
     const { data: result, error } = await supabase.functions.invoke("admin-user-access", { body: { action, data } });
     if (error) {
       const response = (error as any).context;
@@ -79,10 +79,14 @@ function UsersPage() {
   const setActive = useMutation({ mutationFn: async ({ userId, active }: { userId: string; active: boolean }) => { const { error } = await (supabase.from("profiles") as any).update({ is_active: active }).eq("id", userId); if (error) throw error; }, onSuccess: () => { qc.invalidateQueries({ queryKey: ["profiles"] }); toast.success("Status atualizado"); }, onError: (e: any) => toast.error(e.message) });
   const emailFor = (profile: any) => profileEmails.find((item) => item.id === profile.id)?.email ?? profile.email ?? null;
   const resetPasswordMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!resetTarget?.id) throw new Error("Usuário inválido.");
       if (newPassword.length < 6) throw new Error("A nova senha deve ter ao menos 6 caracteres.");
-      return invokeAccessManager("reset_password", { userId: resetTarget.id, password: newPassword });
+      const { error } = await (supabase.rpc("admin_reset_user_password", {
+        target_user_id: resetTarget.id,
+        new_password: newPassword,
+      }) as any);
+      if (error) throw error;
     },
     onSuccess: () => {
       setResetTarget(null);
