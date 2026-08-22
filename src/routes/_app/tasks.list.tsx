@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { format, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -120,6 +120,18 @@ function ListPage() {
     toast.success("Tarefa concluída.");
   };
 
+  const moveToTrash = async (task: Task) => {
+    if (!confirm(`Mover a tarefa “${task.title}” para a lixeira?`)) return;
+    const { error } = await supabase
+      .from("tasks")
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
+      .eq("id", task.id);
+    if (error) return toast.error(error.message);
+    await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    await queryClient.invalidateQueries({ queryKey: ["tasks", "deleted"] });
+    toast.success("Tarefa movida para a lixeira.");
+  };
+
   return (
     <div className="space-y-4 p-6">
       <header className="flex items-center justify-end gap-3 flex-wrap">
@@ -146,7 +158,7 @@ function ListPage() {
               <th className="w-[10%] border-r px-2 py-2">Status</th>
               <th className="w-[10%] border-r px-2 py-2">Prioridade</th>
               <th className="w-[10%] border-r px-2 py-2">Prazo</th>
-              <th className="w-[5%] px-1 py-2 text-center">Concluir</th>
+              <th className="w-[5%] px-1 py-2 text-center">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -235,6 +247,18 @@ function ListPage() {
                       }}
                     >
                       <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Mover para a lixeira"
+                      className="text-destructive"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void moveToTrash(t);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </td>
                 </tr>

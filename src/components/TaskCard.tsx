@@ -721,15 +721,25 @@ export function TaskCard({
   };
 
 
-  const completedStatus = useMemo(() => statuses.find((s) => s.is_completed) ?? null, [statuses]);
-
   const completeTask = async () => {
     await update({
       status: "done",
-      status_id: completedStatus?.id ?? task.status_id,
       completed_at: new Date().toISOString(),
     });
     toast.success("Tarefa concluída");
+  };
+
+  // Soft delete: the task remains recoverable in the system Trash screen.
+  const moveToTrash = async () => {
+    if (!confirm(`Mover a tarefa “${task.title}” para a lixeira?`)) return;
+    const { error } = await supabase
+      .from("tasks")
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.id ?? null })
+      .eq("id", task.id);
+    if (error) return toast.error(error.message);
+    await qc.invalidateQueries({ queryKey: ["tasks"] });
+    await qc.invalidateQueries({ queryKey: ["tasks", "deleted"] });
+    toast.success("Tarefa movida para a lixeira.");
   };
 
   const openDueChange = ({ dueDate: nextIso, dueTime }: { dueDate: string | null; dueTime: string | null }) => {
@@ -770,6 +780,7 @@ export function TaskCard({
         <div className="flex items-center gap-1 border-t px-1.5 py-1">
           <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-success" onPointerDown={stop} onClick={(event) => { stop(event); void completeTask(); }} title="Concluir tarefa" aria-label="Concluir tarefa"><CheckCircle2 className="h-4 w-4" /></Button>
           <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onPointerDown={stop} onClick={(event) => { stop(event); onDuplicate?.(); }} title="Duplicar tarefa" aria-label="Duplicar tarefa"><Copy className="h-3.5 w-3.5" /></Button>
+          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0 text-destructive" onPointerDown={stop} onClick={(event) => { stop(event); void moveToTrash(); }} title="Mover para a lixeira" aria-label="Mover para a lixeira"><Trash2 className="h-3.5 w-3.5" /></Button>
           {taskPeople.length > 0 ? <div className="ml-0.5 flex min-w-0 flex-1 -space-x-1.5" title="Responsável e colaboradores">{taskPeople.slice(0, 3).map((person) => { const name = person.full_name || person.email || "Usuário"; return <Avatar key={person.id} className="h-6 w-6 border-2 border-card text-[8px]" title={name}><AvatarImage src={person.avatar_url || undefined} alt={name} /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>; })}{taskPeople.length > 3 ? <span className="ml-1 self-center text-[10px] text-muted-foreground">+{taskPeople.length - 3}</span> : null}</div> : <span className="flex-1" />}
           <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onPointerDown={stop} onClick={(event) => { stop(event); onEdit?.(); }} title="Editar tarefa" aria-label="Editar tarefa"><MoreHorizontal className="h-3.5 w-3.5" /></Button>
         </div>
@@ -916,6 +927,17 @@ export function TaskCard({
             title="Duplicar tarefa"
           >
             <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-6 w-6 shrink-0 text-destructive opacity-0 transition group-hover:opacity-100"
+            onPointerDown={stop}
+            onClick={(e) => { stop(e); void moveToTrash(); }}
+            title="Mover para a lixeira"
+            aria-label="Mover para a lixeira"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
           {false && <Popover>
             <PopoverTrigger asChild>
