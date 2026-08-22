@@ -116,6 +116,7 @@ let _supabaseAdmin: ReturnType<typeof createSupabaseAdminClient> | undefined;
 export const supabaseAdmin = new Proxy({} as ReturnType<typeof createSupabaseAdminClient>, {
   get(_, prop, receiver) {
     if (!_supabaseAdmin) _supabaseAdmin = createSupabaseAdminClient();
-    return Reflect.get(_supabaseAdmin, prop, receiver);
+    const value = Reflect.get(_supabaseAdmin, prop, _supabaseAdmin);
+    return typeof value === "function" ? value.bind(_supabaseAdmin) : value;
   },
 });
