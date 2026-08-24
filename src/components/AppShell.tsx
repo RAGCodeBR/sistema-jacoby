@@ -35,7 +35,6 @@ const allNav: readonly NavItem[] = [
   { to: "/notes", label: "Anotações", icon: NotebookPen },
   { to: "/import-ata", label: "Importar Ata", icon: FileUp },
   { to: "/clients", label: "Clientes", icon: Building2 },
-  { to: "/residuos", label: "Gestão de Resíduos", icon: Recycle, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
@@ -47,7 +46,7 @@ const allNav: readonly NavItem[] = [
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, isAdmin, hasPermission } = useAuth();
   const nav = useMemo(() => {
-    const accessByPath: Record<string, string> = { "/dashboard": "dashboard", "/tasks": "tasks", "/notes": "notes", "/import-ata": "import_ata", "/clients": "clients", "/residuos": "reports", "/reports": "reports", "/portal": "portal", "/calendario": "calendar", "/users": "users", "/trash": "trash", "/settings": "settings" };
+    const accessByPath: Record<string, string> = { "/dashboard": "dashboard", "/tasks": "tasks", "/notes": "notes", "/import-ata": "import_ata", "/clients": "clients", "/reports": "reports", "/portal": "portal", "/calendario": "calendar", "/users": "users", "/trash": "trash", "/settings": "settings" };
     return allNav.filter((item) => (!item.adminOnly || isAdmin) && hasPermission(accessByPath[item.to]));
   }, [isAdmin, hasPermission]);
 

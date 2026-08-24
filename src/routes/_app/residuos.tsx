@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { WasteManagementModule } from "@/components/WasteManagementModule";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-/** Administrative workspace for the complete residue report lifecycle. */
-export const Route = createFileRoute("/_app/residuos")({ component: ResidueManagementPage });
-function ResidueManagementPage() { return <WasteManagementModule />; }
+/** Legacy address retained only to avoid broken bookmarks. The module lives under Portal do Cliente. */
+export const Route = createFileRoute("/_app/residuos")({
+  beforeLoad: () => { throw redirect({ to: "/portal/residuos" }); },
+});
