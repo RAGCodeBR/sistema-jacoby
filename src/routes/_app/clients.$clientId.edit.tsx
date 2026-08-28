@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ClientDocumentsManager } from "@/components/ClientDocumentsManager";
+import { ClientBranchesManager } from "@/components/ClientBranchesManager";
 
 export const Route = createFileRoute("/_app/clients/$clientId/edit")({
   component: EditClientPage,
@@ -409,6 +410,7 @@ function EditClientPage() {
         <Tabs defaultValue="client">
           <TabsList>
             <TabsTrigger value="client">Dados do cliente</TabsTrigger>
+            <TabsTrigger value="branches">Filiais e pátios</TabsTrigger>
             <TabsTrigger value="departments">Controle de documentos</TabsTrigger>
           </TabsList>
 
@@ -541,6 +543,10 @@ function EditClientPage() {
 
           <TabsContent value="departments" className="mt-6">
             <ClientDocumentsManager clientId={clientId} />
+          </TabsContent>
+
+          <TabsContent value="branches" className="mt-6">
+            <ClientBranchesManager clientId={clientId} />
           </TabsContent>
 
           <TabsContent value="legacy-departments" className="hidden">

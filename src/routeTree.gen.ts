@@ -30,6 +30,7 @@ import { Route as AppPortalDocumentosRouteImport } from './routes/_app/portal.do
 import { Route as AppPortalEntregasRouteImport } from './routes/_app/portal.entregas'
 import { Route as AppPortalFinanceiroRouteImport } from './routes/_app/portal.financeiro'
 import { Route as AppPortalResiduosRouteImport } from './routes/_app/portal.residuos'
+import { Route as AppPortalUnidadesRouteImport } from './routes/_app/portal.unidades'
 import { Route as AppTasksIndexRouteImport } from './routes/_app/tasks.index'
 import { Route as AppTasksCalendarRouteImport } from './routes/_app/tasks.calendar'
 import { Route as AppTasksKanbanRouteImport } from './routes/_app/tasks.kanban'
@@ -140,6 +141,11 @@ const AppPortalResiduosRoute = AppPortalResiduosRouteImport.update({
   path: '/portal/residuos',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPortalUnidadesRoute = AppPortalUnidadesRouteImport.update({
+  id: '/portal/unidades',
+  path: '/portal/unidades',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTasksIndexRoute = AppTasksIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -186,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
   '/portal/residuos': typeof AppPortalResiduosRoute
+  '/portal/unidades': typeof AppPortalUnidadesRoute
   '/tasks/calendar': typeof AppTasksCalendarRoute
   '/tasks/kanban': typeof AppTasksKanbanRoute
   '/tasks/list': typeof AppTasksListRoute
@@ -211,6 +218,7 @@ export interface FileRoutesByTo {
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
   '/portal/residuos': typeof AppPortalResiduosRoute
+  '/portal/unidades': typeof AppPortalUnidadesRoute
   '/tasks/calendar': typeof AppTasksCalendarRoute
   '/tasks/kanban': typeof AppTasksKanbanRoute
   '/tasks/list': typeof AppTasksListRoute
@@ -240,6 +248,7 @@ export interface FileRoutesById {
   '/_app/portal/entregas': typeof AppPortalEntregasRoute
   '/_app/portal/financeiro': typeof AppPortalFinanceiroRoute
   '/_app/portal/residuos': typeof AppPortalResiduosRoute
+  '/_app/portal/unidades': typeof AppPortalUnidadesRoute
   '/_app/tasks/calendar': typeof AppTasksCalendarRoute
   '/_app/tasks/kanban': typeof AppTasksKanbanRoute
   '/_app/tasks/list': typeof AppTasksListRoute
@@ -269,6 +278,7 @@ export interface FileRouteTypes {
     | '/portal/entregas'
     | '/portal/financeiro'
     | '/portal/residuos'
+    | '/portal/unidades'
     | '/tasks/calendar'
     | '/tasks/kanban'
     | '/tasks/list'
@@ -294,6 +304,7 @@ export interface FileRouteTypes {
     | '/portal/entregas'
     | '/portal/financeiro'
     | '/portal/residuos'
+    | '/portal/unidades'
     | '/tasks/calendar'
     | '/tasks/kanban'
     | '/tasks/list'
@@ -322,6 +333,7 @@ export interface FileRouteTypes {
     | '/_app/portal/entregas'
     | '/_app/portal/financeiro'
     | '/_app/portal/residuos'
+    | '/_app/portal/unidades'
     | '/_app/tasks/calendar'
     | '/_app/tasks/kanban'
     | '/_app/tasks/list'
@@ -485,6 +497,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPortalResiduosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/portal/unidades': {
+      id: '/_app/portal/unidades'
+      path: '/portal/unidades'
+      fullPath: '/portal/unidades'
+      preLoaderRoute: typeof AppPortalUnidadesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/tasks/': {
       id: '/_app/tasks/'
       path: '/'
@@ -574,6 +593,7 @@ interface AppRouteChildren {
   AppPortalEntregasRoute: typeof AppPortalEntregasRoute
   AppPortalFinanceiroRoute: typeof AppPortalFinanceiroRoute
   AppPortalResiduosRoute: typeof AppPortalResiduosRoute
+  AppPortalUnidadesRoute: typeof AppPortalUnidadesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -593,6 +613,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPortalEntregasRoute: AppPortalEntregasRoute,
   AppPortalFinanceiroRoute: AppPortalFinanceiroRoute,
   AppPortalResiduosRoute: AppPortalResiduosRoute,
+  AppPortalUnidadesRoute: AppPortalUnidadesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
