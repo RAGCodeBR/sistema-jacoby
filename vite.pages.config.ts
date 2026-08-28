@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouterGenerator } from "@tanstack/router-plugin/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vite";
 
@@ -17,7 +18,9 @@ export default defineConfig({
       "@tanstack/react-start": "/src/pages-react-start-stub.ts",
     },
   },
-  plugins: [react(), tailwindcss(), tsconfigPaths()],
+  // A publicação estática usa uma configuração própria; mantenha o gerador
+  // de rotas aqui para que páginas novas (como /portal/conta) façam parte do bundle.
+  plugins: [tanstackRouterGenerator(), react(), tailwindcss(), tsconfigPaths()],
   build: {
     // Static files are generated here first, then scripts/prepare-gh-pages.mjs renames the entry file.
     outDir: ".gh-pages-dist",

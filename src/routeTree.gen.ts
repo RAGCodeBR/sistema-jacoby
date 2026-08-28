@@ -26,6 +26,7 @@ import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
+import { Route as AppPortalContaRouteImport } from './routes/_app/portal.conta'
 import { Route as AppPortalDocumentosRouteImport } from './routes/_app/portal.documentos'
 import { Route as AppPortalEntregasRouteImport } from './routes/_app/portal.entregas'
 import { Route as AppPortalFinanceiroRouteImport } from './routes/_app/portal.financeiro'
@@ -121,6 +122,11 @@ const AppClientsNewRoute = AppClientsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AppClientsRoute,
 } as any)
+const AppPortalContaRoute = AppPortalContaRouteImport.update({
+  id: '/portal/conta',
+  path: '/portal/conta',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPortalDocumentosRoute = AppPortalDocumentosRouteImport.update({
   id: '/portal/documentos',
   path: '/portal/documentos',
@@ -188,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/portal/conta': typeof AppPortalContaRoute
   '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
@@ -214,6 +221,7 @@ export interface FileRoutesByTo {
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/portal/conta': typeof AppPortalContaRoute
   '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/_app/users': typeof AppUsersRoute
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
+  '/_app/portal/conta': typeof AppPortalContaRoute
   '/_app/portal/documentos': typeof AppPortalDocumentosRoute
   '/_app/portal/entregas': typeof AppPortalEntregasRoute
   '/_app/portal/financeiro': typeof AppPortalFinanceiroRoute
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/portal/conta'
     | '/portal/documentos'
     | '/portal/entregas'
     | '/portal/financeiro'
@@ -300,6 +310,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/portal/conta'
     | '/portal/documentos'
     | '/portal/entregas'
     | '/portal/financeiro'
@@ -329,6 +340,7 @@ export interface FileRouteTypes {
     | '/_app/users'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
+    | '/_app/portal/conta'
     | '/_app/portal/documentos'
     | '/_app/portal/entregas'
     | '/_app/portal/financeiro'
@@ -469,6 +481,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientsNewRouteImport
       parentRoute: typeof AppClientsRoute
     }
+    '/_app/portal/conta': {
+      id: '/_app/portal/conta'
+      path: '/portal/conta'
+      fullPath: '/portal/conta'
+      preLoaderRoute: typeof AppPortalContaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/portal/documentos': {
       id: '/_app/portal/documentos'
       path: '/portal/documentos'
@@ -589,6 +608,7 @@ interface AppRouteChildren {
   AppTrashRoute: typeof AppTrashRoute
   AppUsersRoute: typeof AppUsersRoute
   AppClientReportClientIdRoute: typeof AppClientReportClientIdRoute
+  AppPortalContaRoute: typeof AppPortalContaRoute
   AppPortalDocumentosRoute: typeof AppPortalDocumentosRoute
   AppPortalEntregasRoute: typeof AppPortalEntregasRoute
   AppPortalFinanceiroRoute: typeof AppPortalFinanceiroRoute
@@ -609,6 +629,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTrashRoute: AppTrashRoute,
   AppUsersRoute: AppUsersRoute,
   AppClientReportClientIdRoute: AppClientReportClientIdRoute,
+  AppPortalContaRoute: AppPortalContaRoute,
   AppPortalDocumentosRoute: AppPortalDocumentosRoute,
   AppPortalEntregasRoute: AppPortalEntregasRoute,
   AppPortalFinanceiroRoute: AppPortalFinanceiroRoute,
@@ -626,13 +647,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
