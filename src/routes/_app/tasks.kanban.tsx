@@ -73,7 +73,7 @@ import {
   useTasks,
   useColumns,
   useClients,
-  useProfiles,
+  useTaskProfiles,
   useTaskTags,
   useTaskStatuses,
   useTaskTagLinks,
@@ -345,7 +345,7 @@ function KanbanPage() {
   const { data: userColOrder = [] } = useUserColumnOrder();
   const { data: userTaskOrder = [] } = useUserTaskOrder();
   const { data: clients = [] } = useClients();
-  const { data: profiles = [] } = useProfiles();
+  const { data: profiles = [] } = useTaskProfiles();
   const { data: tags = [] } = useTaskTags();
   const { data: statuses = [] } = useTaskStatuses();
   const { data: collaborators = [] } = useTaskCollaborators();

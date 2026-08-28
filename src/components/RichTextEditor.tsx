@@ -259,9 +259,16 @@ export function RichTextView({
   className?: string;
   onClick?: (e: React.MouseEvent) => void;
 }) {
-  const looksLikeHtml = /<\/?(p|h[1-6]|ul|ol|li|strong|em|u|code|blockquote|a|br|s|hr)\b/i.test(html);
+  // Alguns textos antigos foram gravados com as tags escapadas
+  // (por exemplo, `&lt;p&gt;Texto&lt;/p&gt;`). Reconhecemos apenas as tags que o
+  // editor produz para que elas voltem a ser exibidas como formatação.
+  const normalizedHtml = html.replace(
+    /&lt;(\/?(?:p|h[1-6]|ul|ol|li|strong|em|u|code|blockquote|a|br|s|hr)\b[^&]*)&gt;/gi,
+    "<$1>",
+  );
+  const looksLikeHtml = /<\/?(p|h[1-6]|ul|ol|li|strong|em|u|code|blockquote|a|br|s|hr)\b/i.test(normalizedHtml);
   if (!looksLikeHtml) {
-    const formattedHtml = html
+    const formattedHtml = normalizedHtml
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -286,7 +293,7 @@ export function RichTextView({
         "tiptap prose prose-sm dark:prose-invert max-w-none text-xs leading-snug [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_h2]:text-sm [&_h3]:text-xs [&_a]:underline [&_a]:text-primary [&_u]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1",
         className,
       )}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: normalizedHtml }}
     />
   );
 }

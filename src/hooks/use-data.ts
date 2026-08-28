@@ -249,6 +249,27 @@ export function useProfiles() {
   });
 }
 
+/** Perfis que podem participar de tarefas internas (sem acessos de clientes). */
+export function useTaskProfiles() {
+  return useQuery({
+    queryKey: ["task_profiles"],
+    queryFn: async () => {
+      const [profilesResult, clientLinksResult] = await Promise.all([
+        (supabase.from("profiles") as any).select("id, full_name, avatar_url, is_active"),
+        (supabase.from("client_user_links") as any).select("user_id"),
+      ]);
+      if (profilesResult.error) throw profilesResult.error;
+      if (clientLinksResult.error) throw clientLinksResult.error;
+      const clientAccessIds = new Set(
+        (clientLinksResult.data ?? []).map((link: { user_id: string }) => link.user_id),
+      );
+      return (profilesResult.data ?? []).filter(
+        (profile: Profile) => !clientAccessIds.has(profile.id),
+      ) as Profile[];
+    },
+  });
+}
+
 export function useTaskCollaborators() {
   return useQuery({
     queryKey: ["task_collaborators"],

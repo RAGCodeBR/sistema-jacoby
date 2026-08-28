@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { isStaticPreview, useAuth } from "@/hooks/use-auth";
-import { useClients, useColumns, useProfiles, type Task } from "@/hooks/use-data";
+import { useClients, useColumns, useTaskProfiles, type Task } from "@/hooks/use-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Trash2, Paperclip, Send, Download, ExternalLink, X, Plus, Link2, ChevronDown, ChevronRight, Clock3 } from "lucide-react";
@@ -45,7 +45,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
   const { user, isAdmin } = useAuth();
   const { data: cols } = useColumns();
   const { data: clients } = useClients();
-  const { data: profiles } = useProfiles();
+  const { data: profiles } = useTaskProfiles();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");

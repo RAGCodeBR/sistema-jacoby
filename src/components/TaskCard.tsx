@@ -100,6 +100,18 @@ const DEFAULT_DEADLINE_TIME = "12:00";
 const formatDueTime = (time: string | null) => time?.slice(0, 5) ?? null;
 const hasExplicitDueTime = (time: string | null) => Boolean(formatDueTime(time));
 
+/** O editor completo guarda HTML; a edição rápida do card usa texto simples. */
+const descriptionToPlainText = (value: string | null) => (value ?? "")
+  .replace(/&lt;(\/?(?:p|h[1-6]|ul|ol|li|strong|em|u|code|blockquote|a|br|s|hr)\b[^&]*)&gt;/gi, "<$1>")
+  .replace(/<br\s*\/?\s*>/gi, "\n")
+  .replace(/<\/(?:p|h[1-6]|li|blockquote)>/gi, "\n")
+  .replace(/<[^>]+>/g, "")
+  .replace(/&nbsp;/gi, " ")
+  .replace(/&amp;/gi, "&")
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;/gi, "'")
+  .trim();
+
 interface Props {
   task: Task;
   columns?: KanbanColumn[];
@@ -158,7 +170,7 @@ export function TaskCard({
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [descEditing, setDescEditing] = useState(false);
-  const [descDraft, setDescDraft] = useState(task.description ?? "");
+  const [descDraft, setDescDraft] = useState(descriptionToPlainText(task.description));
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
@@ -221,7 +233,7 @@ export function TaskCard({
   };
 
   useEffect(() => setTitleDraft(task.title), [task.title]);
-  useEffect(() => setDescDraft(task.description ?? ""), [task.description]);
+  useEffect(() => setDescDraft(descriptionToPlainText(task.description)), [task.description]);
   // A expansão é local ao card: ao trocar/sair da tarefa ou recarregar, volta fechada.
   useEffect(() => setDescriptionExpanded(false), [task.id]);
 
@@ -1046,7 +1058,7 @@ export function TaskCard({
                   void saveDesc();
                 }
                 if (e.key === "Escape") {
-                  setDescDraft(task.description ?? "");
+                  setDescDraft(descriptionToPlainText(task.description));
                   setDescEditing(false);
                 }
               }}
