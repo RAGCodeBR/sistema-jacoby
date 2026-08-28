@@ -124,6 +124,37 @@
   --sidebar-foreground: #d9e6d5;
   --sidebar-accent: #2a3f2a;
   --sidebar-border: #324632;
+  --gradient-sidebar: linear-gradient(180deg, #162216 0%, #1b2b1b 100%);
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.28), 0 1px 2px -1px rgb(0 0 0 / 0.24);
+}
+
+/* Marca de entrada da navegação. No modo escuro, o fundo e o realce são
+   próprios para o logo verde, sem deixá-lo com aspecto apagado. */
+.jacoby-sidebar-brand {
+  display: flex;
+  min-height: 8.4rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--sidebar-border);
+  text-align: center;
+}
+.jacoby-sidebar-brand__full {
+  width: min(100%, 11.75rem);
+  height: 5.7rem;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 10px color-mix(in srgb, var(--primary) 14%, transparent));
+}
+.jacoby-sidebar-brand__caption {
+  margin-top: 0.1rem;
+  color: var(--sidebar-foreground);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dark .jacoby-sidebar-brand__full {
+  filter: drop-shadow(0 5px 13px rgb(130 198 101 / 0.25));
 }
 
 /* Os seletores de data são nativos do navegador; force ícones claros no tema escuro. */

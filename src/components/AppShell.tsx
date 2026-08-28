@@ -11,6 +11,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import jacobyLogo from "@/assets/jacoby-logo.webp";
+import jacobyLogoFull from "@/assets/jacoby-logo-transparent.png";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -75,11 +76,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         }`}
         style={{ background: "var(--gradient-sidebar)" }}
       >
-        <div className={`flex items-center gap-2 py-5 ${sidebarOpen ? "px-5" : "px-2 justify-center"}`}>
-          <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black ${sidebarOpen ? "h-9 w-9" : "h-9 w-9"}`}>
-            <img src={jacobyLogo} alt="Jacoby Soluções" className="h-full w-full object-contain" />
-          </div>
-          {sidebarOpen && <span className="text-lg font-semibold">Jacoby</span>}
+        <div className={`jacoby-sidebar-brand ${sidebarOpen ? "px-4 py-5" : "px-2 py-5"}`}>
+          {sidebarOpen ? (
+            <>
+              <img
+                src={jacobyLogoFull}
+                alt="Jacoby Soluções Ambientais"
+                className="jacoby-sidebar-brand__full"
+              />
+              <span className="jacoby-sidebar-brand__caption">Gestão ambiental integrada</span>
+            </>
+          ) : (
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-black">
+              <img src={jacobyLogo} alt="Jacoby Soluções" className="h-full w-full object-contain" />
+            </div>
+          )}
         </div>
 
         <div className={`flex ${sidebarOpen ? "justify-end px-3" : "justify-center"} mb-2`}>
