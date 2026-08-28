@@ -115,7 +115,17 @@ function UsersPage() {
     onError: (error: any) => toast.error(error?.message ?? "Não foi possível redefinir a senha."),
   });
   const activeProfiles = useMemo(() => profiles.filter((p) => (p as any).is_active !== false), [profiles]); const inactiveProfiles = useMemo(() => profiles.filter((p) => (p as any).is_active === false), [profiles]);
-  const openEdit = (id: string) => { const role = (roles.find((r: { user_id: string; role: string }) => r.user_id === id)?.role ?? "collaborator") as Role; const profile = profiles.find((item) => item.id === id); setForm({ ...defaults, fullName: profile?.full_name ?? "", email: profile ? emailFor(profile) ?? "" : "", role, permissions: permissionRows.find((p) => p.user_id === id)?.permissions ?? [], clientId: clientLinks.find((link) => link.user_id === id)?.client_id ?? "" }); setEditing(id); };
+  const openEdit = async (id: string) => {
+    const role = (roles.find((r: { user_id: string; role: string }) => r.user_id === id)?.role ?? "collaborator") as Role;
+    const profile = profiles.find((item) => item.id === id);
+    setForm({ ...defaults, fullName: profile?.full_name ?? "", email: profile ? emailFor(profile) ?? "" : "", role, permissions: permissionRows.find((p) => p.user_id === id)?.permissions ?? [], clientId: clientLinks.find((link) => link.user_id === id)?.client_id ?? "" });
+    setEditing(id);
+    // Busca novamente no momento da abertura: evita que o campo fique vazio
+    // se a consulta protegida de e-mails ainda não terminou de carregar.
+    const { data, error } = await (supabase.rpc("admin_get_profile_emails") as any);
+    const savedEmail = !error ? (data as { id: string; email: string | null }[] | null)?.find((item) => item.id === id)?.email : null;
+    if (savedEmail) setForm((current) => ({ ...current, email: savedEmail }));
+  };
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Carregando…</div>; if (!isAdmin) return <Navigate to="/dashboard" />;
   const renderProfile = (p: any) => {
     const role = (roles.find((r: { user_id: string; role: string }) => r.user_id === p.id)?.role ?? "collaborator") as Role;
