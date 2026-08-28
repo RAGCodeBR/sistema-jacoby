@@ -205,7 +205,7 @@ function CompletedColumn({ taskIds, count, children, orientation, minimal }: any
         <div
           ref={setNodeRef}
           className={`rounded-lg border-2 border-solid p-2 transition ${
-            isVertical ? "flex flex-col gap-2" : "flex flex-nowrap items-start gap-2 overflow-x-auto pb-2"
+            isVertical ? "flex flex-col gap-2" : "kanban-lane-scroll flex flex-nowrap items-start gap-2 overflow-x-auto pb-2"
           } ${isOver ? "border-emerald-500 bg-emerald-500/10" : "border-emerald-500/30 bg-emerald-500/5"}`}
           style={{ minHeight: isVertical ? 200 : 120 }}
         >
@@ -323,7 +323,7 @@ function SortableColumn({
         <div
           ref={setDropRef}
           className={`rounded-lg border-2 border-solid border-l-4 p-2 transition ${
-            isVertical ? "flex flex-col gap-3" : "flex flex-nowrap items-start gap-4 overflow-x-auto pb-2"
+            isVertical ? "flex flex-col gap-3" : "kanban-lane-scroll flex flex-nowrap items-start gap-4 overflow-x-auto pb-2"
           } ${isOver ? "border-primary bg-primary/5" : "border-transparent bg-muted/40"}`}
           style={{
             minHeight: isVertical ? 200 : 120,
@@ -1666,7 +1666,10 @@ function KanbanScrollArea({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div ref={mainRef} className="kanban-scroll min-h-0 flex-1 overflow-auto p-4">
+      <div
+        ref={mainRef}
+        className={`kanban-scroll kanban-scroll--${orientation} min-h-0 flex-1 overflow-auto p-4`}
+      >
         {children}
       </div>
     </div>

@@ -146,7 +146,37 @@
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--muted-foreground) 30%, transparent); border-radius: 999px; }
 
-.kanban-scroll { scrollbar-width: thin; }
+/* Área principal do Kanban: mantém os dois eixos disponíveis quando houver
+   conteúdo além da tela. A reserva das barras evita que elas cubram cards. */
+.kanban-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent) transparent;
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+}
+
+/* No modo de colunas a barra horizontal fica sempre acessível no rodapé;
+   no modo de linhas a mesma área permite descer para as linhas seguintes. */
+.kanban-scroll--vertical { overflow-x: auto; overflow-y: auto; }
+.kanban-scroll--horizontal { overflow-x: auto; overflow-y: auto; }
+
+/* Em visualização horizontal, cada coluna vira uma linha de cards. Esta barra
+   deixa claro que é possível avançar e voltar pelos cards daquela linha. */
+.kanban-lane-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent) transparent;
+  scrollbar-gutter: stable;
+  overscroll-behavior-inline: contain;
+}
+
+.kanban-scroll::-webkit-scrollbar,
+.kanban-lane-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.kanban-scroll::-webkit-scrollbar-track,
+.kanban-lane-scroll::-webkit-scrollbar-track { background: color-mix(in oklab, var(--muted) 60%, transparent); border-radius: 999px; }
+.kanban-scroll::-webkit-scrollbar-thumb,
+.kanban-lane-scroll::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--muted-foreground) 45%, transparent); border: 2px solid transparent; background-clip: padding-box; border-radius: 999px; }
+.kanban-scroll::-webkit-scrollbar-thumb:hover,
+.kanban-lane-scroll::-webkit-scrollbar-thumb:hover { background-color: color-mix(in oklab, var(--muted-foreground) 70%, transparent); }
 .task-overdue { box-shadow: inset 3px 0 0 var(--destructive); }
 .task-due-soon { box-shadow: inset 3px 0 0 var(--warning); }
 
