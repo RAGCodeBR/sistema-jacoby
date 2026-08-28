@@ -40,16 +40,30 @@ export function NotificationBell() {
       .order("created_at", { ascending: false })
       .limit(30);
     const next = (data ?? []) as Notification[];
-    if (next.some((n) => n.type === "assignment" || n.type === "subtask_assignment" || n.type === "collaborator_assignment")) {
-      refreshAssignedWork();
-    }
     setItems(next);
   };
 
   useEffect(() => {
     if (!user) return;
-    load();
-    const poll = window.setInterval(() => void load(), 15_000);
+    let poll: number | null = null;
+    const stopPolling = () => {
+      if (poll !== null) window.clearInterval(poll);
+      poll = null;
+    };
+    const startPolling = () => {
+      stopPolling();
+      // Navegadores reduzem timers em abas minimizadas. Não acumulamos novas
+      // consultas nesse período; ao voltar, fazemos apenas uma atualização.
+      if (document.hidden) return;
+      poll = window.setInterval(() => void load(), 60_000);
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) void load();
+      startPolling();
+    };
+    void load();
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     const channel = supabase
       .channel(`notifications-${user.id}-${Math.random().toString(36).slice(2)}`)
       .on(
@@ -63,7 +77,8 @@ export function NotificationBell() {
       )
       .subscribe();
     return () => {
-      window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopPolling();
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

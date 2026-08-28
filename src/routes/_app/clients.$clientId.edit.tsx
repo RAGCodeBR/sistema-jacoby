@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronDown, ImageUp, LoaderCircle, Pencil, Plus, Save, Trash2, Users } from "lucide-react";
 import { DndContext, PointerSensor, closestCenter, type DragEndEvent, useSensor, useSensors } from "@dnd-kit/core";
@@ -96,6 +96,7 @@ function EditClientPage() {
   const [employeeAvatarUrls, setEmployeeAvatarUrls] = useState<Record<string, string>>({});
   const [selectedEmployee, setSelectedEmployee] = useState<ClientDepartmentEmployee | null>(null);
   const [employeeDialogPosition, setEmployeeDialogPosition] = useState({ x: 0, y: 0 });
+  const stopEmployeeDialogDragRef = useRef<null | (() => void)>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   useEffect(() => {
@@ -154,6 +155,10 @@ function EditClientPage() {
     void loadEmployeeAvatars();
     return () => { cancelled = true; };
   }, [employees]);
+
+  // Garante que nenhum listener de arraste fique ativo se a janela for
+  // minimizada, a aba mudar ou a tela for desmontada durante um arraste.
+  useEffect(() => () => stopEmployeeDialogDragRef.current?.(), []);
 
   const save = async () => {
     const name = tradeName.trim() || legalName.trim() || client?.name;
@@ -354,6 +359,7 @@ function EditClientPage() {
   };
 
   const startEmployeeDialogDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    stopEmployeeDialogDragRef.current?.();
     const startX = event.clientX;
     const startY = event.clientY;
     const initialPosition = employeeDialogPosition;
@@ -366,9 +372,13 @@ function EditClientPage() {
     const onEnd = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("blur", onEnd);
+      stopEmployeeDialogDragRef.current = null;
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onEnd);
+    window.addEventListener("blur", onEnd, { once: true });
+    stopEmployeeDialogDragRef.current = onEnd;
   };
 
   if (isLoading) {

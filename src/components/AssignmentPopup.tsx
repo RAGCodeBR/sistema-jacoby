@@ -98,8 +98,24 @@ export function AssignmentPopup() {
       }
     };
 
+    let poll: number | null = null;
+    const stopPolling = () => {
+      if (poll !== null) window.clearInterval(poll);
+      poll = null;
+    };
+    const startPolling = () => {
+      stopPolling();
+      if (document.hidden) return;
+      poll = window.setInterval(() => void loadFreshAssignments(), 60_000);
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) void loadFreshAssignments();
+      startPolling();
+    };
+
     void loadFreshAssignments();
-    const poll = window.setInterval(() => void loadFreshAssignments(), 12_000);
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     const channel = supabase
       .channel(`assign-popup-${user.id}-${Math.random().toString(36).slice(2)}`)
@@ -117,7 +133,12 @@ export function AssignmentPopup() {
       )
       .subscribe();
 
-    return () => { cancelled = true; window.clearInterval(poll); supabase.removeChannel(channel); };
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopPolling();
+      supabase.removeChannel(channel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -210,4 +231,3 @@ export function AssignmentPopup() {
     </Dialog>
   );
 }
-
