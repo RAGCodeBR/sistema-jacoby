@@ -80,7 +80,10 @@ function UsersPage() {
     if (form.role === "client") {
       if (form.fullName.trim().length < 2) throw new Error("Informe o nome completo.");
       if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) throw new Error("Informe um e-mail válido.");
-      const { error: nameError } = await (supabase.from("profiles") as any).update({ full_name: form.fullName.trim() }).eq("id", editing);
+      const { error: nameError } = await (supabase.rpc("admin_update_client_profile_name", {
+        target_user_id: editing,
+        new_full_name: form.fullName.trim(),
+      }) as any);
       if (nameError) throw nameError;
       const currentEmail = profileEmails.find((item) => item.id === editing)?.email ?? "";
       if (form.email.trim().toLowerCase() !== currentEmail.toLowerCase()) {

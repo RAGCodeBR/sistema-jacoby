@@ -6,7 +6,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, ListChecks, Users, Building2, Settings, LogOut, Moon, Sun, PanelLeft, PanelRight, NotebookPen, BarChart3, Trash2, FileUp, PanelsTopLeft, ChevronDown, FileText, Recycle, MapPinned } from "lucide-react";
+import { LayoutDashboard, ListChecks, Users, Building2, Settings, LogOut, Moon, Sun, PanelLeft, PanelRight, NotebookPen, BarChart3, Trash2, FileUp, PanelsTopLeft, ChevronDown, FileText, Recycle, MapPinned, KeyRound } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -45,7 +45,7 @@ const allNav: readonly NavItem[] = [
 
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { profile, user, signOut, isAdmin, hasPermission } = useAuth();
+  const { profile, user, signOut, isAdmin, isClient, hasPermission } = useAuth();
   const nav = useMemo(() => {
     const accessByPath: Record<string, string> = { "/dashboard": "dashboard", "/tasks": "tasks", "/notes": "notes", "/import-ata": "import_ata", "/clients": "clients", "/reports": "reports", "/portal": "portal", "/calendario": "calendar", "/users": "users", "/trash": "trash", "/settings": "settings" };
     return allNav.filter((item) => (!item.adminOnly || isAdmin) && hasPermission(accessByPath[item.to]));
@@ -107,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((n) => {
-            if (n.to === "/portal") return <PortalNavGroup key={n.to} expanded={sidebarOpen} active={pathname.startsWith("/portal/")} isAdmin={isAdmin} />;
+            if (n.to === "/portal") return <PortalNavGroup key={n.to} expanded={sidebarOpen} active={pathname.startsWith("/portal/")} isAdmin={isAdmin} isClient={isClient} />;
             const Active = pathname === n.to || pathname.startsWith(n.to + "/");
             const Icon = n.icon;
             return (
@@ -181,7 +181,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <nav className="flex-1 space-y-1 px-3">
               {nav.map((n) => {
-                if (n.to === "/portal") return <PortalNavGroup key={n.to} expanded active={pathname.startsWith("/portal/")} isAdmin={isAdmin} onNavigate={() => setSidebarOpen(false)} />;
+                if (n.to === "/portal") return <PortalNavGroup key={n.to} expanded active={pathname.startsWith("/portal/")} isAdmin={isAdmin} isClient={isClient} onNavigate={() => setSidebarOpen(false)} />;
                 const Active = pathname === n.to || pathname.startsWith(n.to + "/");
                 const Icon = n.icon;
                 return (
@@ -235,7 +235,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function PortalNavGroup({ expanded, active, isAdmin, onNavigate }: { expanded: boolean; active: boolean; isAdmin: boolean; onNavigate?: () => void }) {
+function PortalNavGroup({ expanded, active, isAdmin, isClient, onNavigate }: { expanded: boolean; active: boolean; isAdmin: boolean; isClient: boolean; onNavigate?: () => void }) {
   if (!expanded) return <div title="Portal do Cliente" className={`flex justify-center rounded-lg px-2 py-2 ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70"}`}><PanelsTopLeft className="h-4 w-4" /></div>;
-  return <Collapsible defaultOpen={active} className="space-y-1"><CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"}`}><PanelsTopLeft className="h-4 w-4" /><span className="flex-1 text-left">Portal do Cliente</span><ChevronDown className="h-4 w-4" /></CollapsibleTrigger><CollapsibleContent className="space-y-1 pl-4">{/* Entregas e Financeiro permanecem preservados nas rotas, mas ocultos da operação atual. */}<Link to="/portal/unidades" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><MapPinned className="h-4 w-4" />Unidades e pátios</Link><Collapsible defaultOpen={active}><CollapsibleTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><Recycle className="h-4 w-4" /><span className="flex-1 text-left">Gestão de Resíduos</span><ChevronDown className="h-4 w-4" /></CollapsibleTrigger><CollapsibleContent className="space-y-1 pl-4"><Link to="/portal/residuos" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">Relatórios e faturamento</Link>{isAdmin&&<><Link to="/portal/residuos" search={{aba:"residuos"}} onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">Cadastro de resíduos</Link><Link to="/portal/residuos" search={{aba:"equipamentos"}} onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">Cadastro de equipamentos</Link></>}</CollapsibleContent></Collapsible><Link to="/portal/documentos" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><FileText className="h-4 w-4" />Documentos</Link></CollapsibleContent></Collapsible>;
+  return <Collapsible defaultOpen={active} className="space-y-1"><CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"}`}><PanelsTopLeft className="h-4 w-4" /><span className="flex-1 text-left">Portal do Cliente</span><ChevronDown className="h-4 w-4" /></CollapsibleTrigger><CollapsibleContent className="space-y-1 pl-4">{/* Entregas e Financeiro permanecem preservados nas rotas, mas ocultos da operação atual. */}<Link to="/portal/unidades" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><MapPinned className="h-4 w-4" />Unidades e pátios</Link><Collapsible defaultOpen={active}><CollapsibleTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><Recycle className="h-4 w-4" /><span className="flex-1 text-left">Gestão de Resíduos</span><ChevronDown className="h-4 w-4" /></CollapsibleTrigger><CollapsibleContent className="space-y-1 pl-4"><Link to="/portal/residuos" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">Relatórios e faturamento</Link>{isAdmin&&<><Link to="/portal/residuos" search={{aba:"residuos"}} onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">Cadastro de resíduos</Link><Link to="/portal/residuos" search={{aba:"equipamentos"}} onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">Cadastro de equipamentos</Link></>}</CollapsibleContent></Collapsible><Link to="/portal/documentos" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><FileText className="h-4 w-4" />Documentos</Link>{isClient && <Link to="/portal/conta" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"><KeyRound className="h-4 w-4" />Minha conta</Link>}</CollapsibleContent></Collapsible>;
 }
