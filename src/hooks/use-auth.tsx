@@ -129,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string) => {
+    setLoading(true);
     // Profiles live in public.profiles, keyed by the Supabase auth user id.
     // The trigger in the migrations creates this row when a new user signs up.
     const { data: prof } = await supabase
@@ -150,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setClientId(link?.client_id ?? null);
     const { data: access } = await (supabase.from("user_permissions") as any).select("permissions").eq("user_id", uid).maybeSingle();
     setPermissions(admin ? ["dashboard", "tasks", "notes", "import_ata", "clients", "reports", "portal", "calendar", "users", "trash", "settings"] : (access?.permissions ?? []));
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -177,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
+        setLoading(true);
         setTimeout(() => loadProfile(s.user.id), 0);
       } else {
         setProfile(null);
@@ -191,8 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
-      if (data.session?.user) loadProfile(data.session.user.id);
-      setLoading(false);
+      if (data.session?.user) void loadProfile(data.session.user.id);
+      else setLoading(false);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
