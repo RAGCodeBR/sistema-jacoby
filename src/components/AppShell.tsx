@@ -6,7 +6,28 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, ListChecks, Users, Building2, Settings, LogOut, Moon, Sun, PanelLeft, PanelRight, NotebookPen, BarChart3, Trash2, FileUp, PanelsTopLeft, ChevronDown, FileText, Recycle, MapPinned, KeyRound } from "lucide-react";
+import {
+  LayoutDashboard,
+  ListChecks,
+  Users,
+  Building2,
+  Settings,
+  LogOut,
+  Moon,
+  Sun,
+  PanelLeft,
+  PanelRight,
+  NotebookPen,
+  BarChart3,
+  Trash2,
+  FileUp,
+  PanelsTopLeft,
+  ChevronDown,
+  FileText,
+  Recycle,
+  MapPinned,
+  KeyRound,
+} from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -43,12 +64,25 @@ const allNav: readonly NavItem[] = [
   { to: "/settings", label: "Personalizar", icon: Settings },
 ] as const;
 
-
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, isAdmin, isClient, hasPermission } = useAuth();
   const nav = useMemo(() => {
-    const accessByPath: Record<string, string> = { "/dashboard": "dashboard", "/tasks": "tasks", "/notes": "notes", "/import-ata": "import_ata", "/clients": "clients", "/reports": "reports", "/portal": "portal", "/calendario": "calendar", "/users": "users", "/trash": "trash", "/settings": "settings" };
-    return allNav.filter((item) => (!item.adminOnly || isAdmin) && hasPermission(accessByPath[item.to]));
+    const accessByPath: Record<string, string> = {
+      "/dashboard": "dashboard",
+      "/tasks": "tasks",
+      "/notes": "notes",
+      "/import-ata": "import_ata",
+      "/clients": "clients",
+      "/reports": "reports",
+      "/portal": "portal",
+      "/calendario": "calendar",
+      "/users": "users",
+      "/trash": "trash",
+      "/settings": "settings",
+    };
+    return allNav.filter(
+      (item) => (!item.adminOnly || isAdmin) && hasPermission(accessByPath[item.to]),
+    );
   }, [isAdmin, hasPermission]);
 
   useEffect(() => {
@@ -66,6 +100,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [sidebarOpen]);
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const activeWasteTab = useRouterState({
+    select: (s) => (s.location.search as { aba?: string }).aba,
+  });
   const initials = (profile?.full_name || user?.email || "?").slice(0, 2).toUpperCase();
 
   return (
@@ -88,7 +125,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             </>
           ) : (
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-black">
-              <img src={jacobyLogo} alt="Jacoby Soluções" className="h-full w-full object-contain" />
+              <img
+                src={jacobyLogo}
+                alt="Jacoby Soluções"
+                className="h-full w-full object-contain"
+              />
             </div>
           )}
         </div>
@@ -107,7 +148,82 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((n) => {
-            if (n.to === "/portal") return <PortalNavGroup key={n.to} expanded={sidebarOpen} active={pathname.startsWith("/portal/")} isAdmin={isAdmin} isClient={isClient} />;
+            if (n.to === "/portal")
+              return (
+                <div key={n.to} className="space-y-1">
+                  <PortalNavGroup
+                    expanded={sidebarOpen}
+                    active={pathname.startsWith("/portal/")}
+                    isAdmin={isAdmin}
+                    isClient={isClient}
+                  />
+                  {isAdmin && (
+                    <>
+                      <Link
+                        to="/portal/residuos"
+                        search={{ aba: "faturamento" }}
+                        className={`flex items-center gap-3 rounded-lg transition ${
+                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
+                        } ${
+                          pathname === "/portal/residuos" && activeWasteTab === "faturamento"
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }`}
+                        title="Faturamento"
+                      >
+                        <Recycle className="h-4 w-4 shrink-0" />
+                        {sidebarOpen && <span className="truncate">Faturamento</span>}
+                      </Link>
+                      <Link
+                        to="/portal/residuos"
+                        search={{ aba: "faturamento2" }}
+                        className={`flex items-center gap-3 rounded-lg transition ${
+                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
+                        } ${
+                          pathname === "/portal/residuos" && activeWasteTab === "faturamento2"
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }`}
+                        title="Faturamento 2"
+                      >
+                        <Recycle className="h-4 w-4 shrink-0" />
+                        {sidebarOpen && <span className="truncate">Faturamento 2</span>}
+                      </Link>
+                      <Link
+                        to="/portal/residuos"
+                        search={{ aba: "configuracoes" }}
+                        className={`flex items-center gap-3 rounded-lg transition ${
+                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
+                        } ${
+                          pathname === "/portal/residuos" && activeWasteTab === "configuracoes"
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }`}
+                        title="Configurações de movimentação"
+                      >
+                        <Settings className="h-4 w-4 shrink-0" />
+                        {sidebarOpen && (
+                          <span className="truncate">Configurações de movimentação</span>
+                        )}
+                      </Link>
+                      <Link
+                        to="/portal/documentos"
+                        className={`flex items-center gap-3 rounded-lg transition ${
+                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
+                        } ${
+                          pathname === "/portal/documentos"
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }`}
+                        title="Documentos"
+                      >
+                        <FileText className="h-4 w-4 shrink-0" />
+                        {sidebarOpen && <span className="truncate">Documentos</span>}
+                      </Link>
+                    </>
+                  )}
+                </div>
+              );
             const Active = pathname === n.to || pathname.startsWith(n.to + "/");
             const Icon = n.icon;
             return (
@@ -130,11 +246,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className={`border-t border-sidebar-border p-3 ${sidebarOpen ? "" : "flex flex-col items-center gap-2"}`}>
-          <div className={`flex items-center gap-3 rounded-lg p-2 ${sidebarOpen ? "" : "flex-col"}`}>
+        <div
+          className={`border-t border-sidebar-border p-3 ${sidebarOpen ? "" : "flex flex-col items-center gap-2"}`}
+        >
+          <div
+            className={`flex items-center gap-3 rounded-lg p-2 ${sidebarOpen ? "" : "flex-col"}`}
+          >
             <Avatar className="h-8 w-8">
-              <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || user?.email || "Usuário"} />
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">{initials}</AvatarFallback>
+              <AvatarImage
+                src={profile?.avatar_url || undefined}
+                alt={profile?.full_name || user?.email || "Usuário"}
+              />
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+                {initials}
+              </AvatarFallback>
             </Avatar>
             {sidebarOpen && (
               <div className="min-w-0 flex-1">
@@ -143,10 +268,22 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             )}
             <div className={`flex ${sidebarOpen ? "gap-1" : "flex-col gap-2"}`}>
-              <Button size="icon" variant="ghost" className="h-8 w-8 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent" onClick={toggle} title={theme === "dark" ? "Modo claro" : "Modo escuro"}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                onClick={toggle}
+                title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+              >
                 {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent" onClick={signOut} title="Sair">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                onClick={signOut}
+                title="Sair"
+              >
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
@@ -163,16 +300,22 @@ export function AppShell({ children }: { children: ReactNode }) {
         <NotificationBell />
       </div>
 
-
       {/* Mobile overlay sidebar */}
       {sidebarOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          <div className="w-56 bg-background border-r flex flex-col" style={{ background: "var(--gradient-sidebar)" }}>
+          <div
+            className="w-56 bg-background border-r flex flex-col"
+            style={{ background: "var(--gradient-sidebar)" }}
+          >
             <div className="flex items-center justify-between px-5 py-4">
               <div className="flex items-center gap-2">
-              <div className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black h-9 w-9">
-                <img src={jacobyLogo} alt="Jacoby Soluções" className="h-full w-full object-contain" />
-              </div>
+                <div className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black h-9 w-9">
+                  <img
+                    src={jacobyLogo}
+                    alt="Jacoby Soluções"
+                    className="h-full w-full object-contain"
+                  />
+                </div>
                 <span className="text-lg font-semibold">Jacoby</span>
               </div>
               <Button size="icon" variant="ghost" onClick={() => setSidebarOpen(false)}>
@@ -181,7 +324,73 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <nav className="flex-1 space-y-1 px-3">
               {nav.map((n) => {
-                if (n.to === "/portal") return <PortalNavGroup key={n.to} expanded active={pathname.startsWith("/portal/")} isAdmin={isAdmin} isClient={isClient} onNavigate={() => setSidebarOpen(false)} />;
+                if (n.to === "/portal")
+                  return (
+                    <div key={n.to} className="space-y-1">
+                      <PortalNavGroup
+                        expanded
+                        active={pathname.startsWith("/portal/")}
+                        isAdmin={isAdmin}
+                        isClient={isClient}
+                        onNavigate={() => setSidebarOpen(false)}
+                      />
+                      {isAdmin && (
+                        <>
+                          <Link
+                            to="/portal/residuos"
+                            search={{ aba: "faturamento" }}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                              pathname === "/portal/residuos" && activeWasteTab === "faturamento"
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                            }`}
+                          >
+                            <Recycle className="h-4 w-4" />
+                            Faturamento
+                          </Link>
+                          <Link
+                            to="/portal/residuos"
+                            search={{ aba: "faturamento2" }}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                              pathname === "/portal/residuos" && activeWasteTab === "faturamento2"
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                            }`}
+                          >
+                            <Recycle className="h-4 w-4" />
+                            Faturamento 2
+                          </Link>
+                          <Link
+                            to="/portal/residuos"
+                            search={{ aba: "configuracoes" }}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                              pathname === "/portal/residuos" && activeWasteTab === "configuracoes"
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                            }`}
+                          >
+                            <Settings className="h-4 w-4" />
+                            Configurações de movimentação
+                          </Link>
+                          <Link
+                            to="/portal/documentos"
+                            onClick={() => setSidebarOpen(false)}
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                              pathname === "/portal/documentos"
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                            }`}
+                          >
+                            <FileText className="h-4 w-4" />
+                            Documentos
+                          </Link>
+                        </>
+                      )}
+                    </div>
+                  );
                 const Active = pathname === n.to || pathname.startsWith(n.to + "/");
                 const Icon = n.icon;
                 return (
@@ -204,17 +413,36 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="border-t border-sidebar-border p-3">
               <div className="flex items-center gap-3 rounded-lg p-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || user?.email || "Usuário"} />
-                  <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">{initials}</AvatarFallback>
+                  <AvatarImage
+                    src={profile?.avatar_url || undefined}
+                    alt={profile?.full_name || user?.email || "Usuário"}
+                  />
+                  <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{profile?.full_name || user?.email}</p>
+                  <p className="truncate text-sm font-medium">
+                    {profile?.full_name || user?.email}
+                  </p>
                   <p className="truncate text-xs text-sidebar-foreground/60">{user?.email}</p>
                 </div>
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={toggle} title={theme === "dark" ? "Modo claro" : "Modo escuro"}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={toggle}
+                  title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+                >
                   {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={signOut} title="Sair">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={signOut}
+                  title="Sair"
+                >
                   <LogOut className="h-4 w-4" />
                 </Button>
               </div>
@@ -235,8 +463,65 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function PortalNavGroup({ expanded, active, isAdmin, isClient, onNavigate }: { expanded: boolean; active: boolean; isAdmin: boolean; isClient: boolean; onNavigate?: () => void }) {
-  const item = "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground";
-  if (!expanded) return <div title="Portal do Cliente" className={`flex justify-center rounded-lg px-2 py-2 ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70"}`}><PanelsTopLeft className="h-4 w-4" /></div>;
-  return <Collapsible defaultOpen={active} className="space-y-1"><CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"}`}><PanelsTopLeft className="h-4 w-4" /><span className="flex-1 text-left">Portal do Cliente</span><ChevronDown className="h-4 w-4" /></CollapsibleTrigger><CollapsibleContent className="space-y-1 pl-4"><Link to="/portal/unidades" onClick={onNavigate} className={item}><MapPinned className="h-4 w-4" />Unidades e pátios</Link><Collapsible defaultOpen={active}><CollapsibleTrigger className={item}><Recycle className="h-4 w-4" /><span className="flex-1 text-left">Gestão de Resíduos</span><ChevronDown className="h-4 w-4" /></CollapsibleTrigger><CollapsibleContent className="space-y-1 pl-4"><Link to="/portal/residuos" search={{aba:"relatorios"}} onClick={onNavigate} className={item}>Relatórios</Link>{!isClient&&<Link to="/portal/residuos" search={{aba:"faturamento"}} onClick={onNavigate} className={item}>Faturamento</Link>}{isAdmin&&<><Link to="/portal/residuos" search={{aba:"residuos"}} onClick={onNavigate} className={item}>Cadastro de resíduos</Link><Link to="/portal/residuos" search={{aba:"equipamentos"}} onClick={onNavigate} className={item}>Cadastro de equipamentos</Link><Link to="/portal/residuos" search={{aba:"servicos"}} onClick={onNavigate} className={item}>Cadastro de serviços</Link></>}</CollapsibleContent></Collapsible><Link to="/portal/documentos" onClick={onNavigate} className={item}><FileText className="h-4 w-4" />Documentos</Link>{isClient && <Link to="/portal/conta" onClick={onNavigate} className={item}><KeyRound className="h-4 w-4" />Minha conta</Link>}</CollapsibleContent></Collapsible>;
+function PortalNavGroup({
+  expanded,
+  active,
+  isAdmin,
+  isClient,
+  onNavigate,
+}: {
+  expanded: boolean;
+  active: boolean;
+  isAdmin: boolean;
+  isClient: boolean;
+  onNavigate?: () => void;
+}) {
+  const item =
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground";
+  if (!expanded)
+    return (
+      <div
+        title="Portal do Cliente"
+        className={`flex justify-center rounded-lg px-2 py-2 ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70"}`}
+      >
+        <PanelsTopLeft className="h-4 w-4" />
+      </div>
+    );
+  return (
+    <Collapsible defaultOpen={active} className="space-y-1">
+      <CollapsibleTrigger
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"}`}
+      >
+        <PanelsTopLeft className="h-4 w-4" />
+        <span className="flex-1 text-left">Portal do Cliente</span>
+        <ChevronDown className="h-4 w-4" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-1 pl-4">
+        <Link to="/portal/unidades" onClick={onNavigate} className={item}>
+          <MapPinned className="h-4 w-4" />
+          Unidades e pátios
+        </Link>
+        <Link
+          to="/portal/residuos"
+          search={{ aba: "relatorios" }}
+          onClick={onNavigate}
+          className={item}
+        >
+          Relatórios
+        </Link>
+        {!isAdmin && (
+          <Link to="/portal/documentos" onClick={onNavigate} className={item}>
+            <FileText className="h-4 w-4" />
+            Documentos
+          </Link>
+        )}
+        {isClient && (
+          <Link to="/portal/conta" onClick={onNavigate} className={item}>
+            <KeyRound className="h-4 w-4" />
+            Minha conta
+          </Link>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }

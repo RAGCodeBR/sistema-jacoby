@@ -11,83 +11,3138 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useRouterState } from "@tanstack/react-router";
 import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
+import { BillingV2Module } from "@/components/BillingV2Module";
 
-type Residue={id:string;client_id:string;name:string;waste_class:"class_i"|"class_ii";unit:string;default_rental_rate:number;default_exchange_rate:number;default_treatment_rate:number;active:boolean};
-type Equipment={id:string;name:string;equipment_type:string;load_capacity_kg:number|null;capacity_unit:string;category:string;plate:string|null;active:boolean};
-type Branch={id:string;name:string;legal_name:string|null;cnpj:string|null;address:string|null;responsible:string|null;phone:string|null;email:string|null;is_active:boolean};
-type Service={id:string;client_id:string;name:string;default_rate:number;active:boolean};
-type ReportService={id:string;waste_service_id:string;rate:number;excluded:boolean};
-type Report={id:string;period_start:string;period_end:string;status:"draft"|"published"};
-type Movement={id:string;waste_residue_id:string|null;branch_id:string|null;equipment_id:string|null;occurred_on:string;placed_quantity:number;removed_quantity:number;weight_kg:number;service_order:string|null;mtr_number:string|null;destination_name:string|null};
-type Rate={id:string;waste_residue_id:string|null;rental_rate:number;exchange_rate:number;treatment_rate:number;excluded?:boolean};
-type Ticket={id:string;waste_residue_id:string|null;equipment_id:string|null;weighed_on:string|null;ticket_number:string|null;vehicle_plate:string|null;net_weight_kg:number|null};
-const money=(v:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v||0); const n=(v:number)=>new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(v||0); const today=()=>new Date().toISOString().slice(0,10); const formatDate=(value:string)=>value?new Intl.DateTimeFormat("pt-BR",{timeZone:"UTC"}).format(new Date(`${value}T00:00:00`)):"—";
-const Field=({label,children}:{label:string;children:React.ReactNode})=><div><Label>{label}</Label><div className="mt-1">{children}</div></div>;
+type Residue = {
+  id: string;
+  client_id: string;
+  name: string;
+  waste_class: "class_i" | "class_ii";
+  unit: string;
+  default_rental_rate: number;
+  default_exchange_rate: number;
+  default_treatment_rate: number;
+  active: boolean;
+};
+type Equipment = {
+  id: string;
+  identification: string | null;
+  name: string;
+  equipment_type: string;
+  load_capacity_kg: number | null;
+  capacity_unit: string;
+  capacity_value: number | null;
+  capacity_m3: number | null;
+  vehicle_type: string | null;
+  category: string;
+  plate: string | null;
+  active: boolean;
+};
+type EquipmentOption = {
+  id: string;
+  option_type: "vehicle_model" | "recipient";
+  name: string;
+  active: boolean;
+};
+type StandardResidueType = {
+  id: string;
+  name: string;
+  waste_class: "class_i" | "class_ii";
+  unit: string;
+  active: boolean;
+};
+type Branch = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  cnpj: string | null;
+  address: string | null;
+  responsible: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+};
+type Service = {
+  id: string;
+  client_id: string;
+  name: string;
+  default_rate: number;
+  active: boolean;
+};
+type ReportService = { id: string; waste_service_id: string; rate: number; excluded: boolean };
+type Report = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  status: "draft" | "published";
+};
+type Movement = {
+  id: string;
+  waste_residue_id: string | null;
+  branch_id: string | null;
+  equipment_id: string | null;
+  occurred_on: string;
+  operation_type?: "movement" | "container_placement";
+  placement_value?: number;
+  container_placement_id?: string | null;
+  placed_quantity: number;
+  removed_quantity: number;
+  weight_kg: number;
+  service_order: string | null;
+  mtr_number: string | null;
+  destination_name: string | null;
+};
+type Rate = {
+  id: string;
+  waste_residue_id: string | null;
+  rental_rate: number;
+  exchange_rate: number;
+  treatment_rate: number;
+  excluded?: boolean;
+};
+type Ticket = {
+  id: string;
+  waste_residue_id: string | null;
+  equipment_id: string | null;
+  weighed_on: string | null;
+  ticket_number: string | null;
+  vehicle_plate: string | null;
+  net_weight_kg: number | null;
+};
+const money = (v: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+const n = (v: number) =>
+  new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(v || 0);
+const capacityUnitLabel = (unit: string) =>
+  ({ m3: "m³", tonelada: "Toneladas", litros: "Litros", kg: "KG", granel: "Granel" })[unit] || unit;
+const optionKey = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+const uniqueOptionNames = (names: string[]) => {
+  const known = new Set<string>();
+  return names.filter((name) => {
+    const key = optionKey(name);
+    if (!key || known.has(key)) return false;
+    known.add(key);
+    return true;
+  });
+};
+const equipmentLabel = (equipment?: Equipment) =>
+  equipment
+    ? [equipment.identification, equipment.name, equipment.equipment_type]
+        .filter(Boolean)
+        .join(" · ")
+    : "Equipamento";
+const today = () => new Date().toISOString().slice(0, 10);
+const formatDate = (value: string) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${value}T00:00:00`))
+    : "—";
+const isContainerPlacement = (move: Movement) => move.operation_type === "container_placement";
+const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div>
+    <Label>{label}</Label>
+    <div className="mt-1">{children}</div>
+  </div>
+);
 
-export function WasteManagementModule({portal=false}:{portal?:boolean}){
- const qc=useQueryClient(); const {data:clients=[]}=useClients(); const {isAdmin,isClient,clientId:linked,loading}=useAuth(); const [clientId,setClientId]=useState(""); const [reportId,setReportId]=useState(""); const [period,setPeriod]=useState(new Date().toISOString().slice(0,7)); const [reportYear,setReportYear]=useState(String(new Date().getFullYear())); const [reportMonth,setReportMonth]=useState("todos");
- const search=useRouterState({select:s=>s.location.search}) as {aba?:string}; const requestedCatalogTab=["relatorios","faturamento","residuos","equipamentos","servicos"].includes(search.aba??"")?search.aba:null; const catalogTab=isClient&&requestedCatalogTab!=="relatorios"?"relatorios":requestedCatalogTab; const targetView=catalogTab==="relatorios"?"painel":catalogTab==="faturamento"?"movimentos":catalogTab??"painel"; const [view,setView]=useState<string>(targetView); useEffect(()=>setView(targetView),[targetView]);
- const [resForm,setResForm]=useState({name:"",waste_class:"class_ii",unit:"kg",rental:"0",exchange:"0",treatment:"0"}); const [eqForm,setEqForm]=useState({name:"",type:"",category:"cacamba",capacity:"",capacityUnit:"kg",plate:""}); const [serviceForm,setServiceForm]=useState({name:""}); const [move,setMove]=useState({residue:"",branch:"",equipment:"",date:today(),placed:"0",removed:"0",weight:"0",os:"",mtr:"",destination:""}); const [ticket,setTicket]=useState({residue:"",equipment:"",number:"",date:today(),net:""}); const [invoiceBranch,setInvoiceBranch]=useState(""); const [invoiceResidues,setInvoiceResidues]=useState<string[]>([]); const [invoiceServices,setInvoiceServices]=useState<string[]>([]);
- const [editingResidue,setEditingResidue]=useState<Residue|null>(null); const [editingEquipment,setEditingEquipment]=useState<Equipment|null>(null); const [editingService,setEditingService]=useState<Service|null>(null); const [editingMove,setEditingMove]=useState<Movement|null>(null);
- useEffect(()=>{if(isClient)setClientId(linked??"");else if(!clientId&&clients[0])setClientId(clients[0].id)},[isClient,linked,clientId,clients]);
- const clientQuery=<T,>(key:string,table:string)=>useQuery({queryKey:[key,clientId],enabled:!!clientId,queryFn:async()=>{const {data,error}=await (supabase.from(table as any)as any).select("*").eq("client_id",clientId);if(error)throw error;return(data??[])as T[]}});
- const {data:residues=[]}=clientQuery<Residue>("waste-residues","waste_residues"); const {data:equipment=[]}=clientQuery<Equipment>("waste-equipment","waste_equipment"); const {data:services=[]}=clientQuery<Service>("waste-services","waste_services"); const {data:branches=[]}=useQuery({queryKey:["client-branches",clientId],enabled:!!clientId,queryFn:async()=>{const{data,error}=await(supabase.from("client_branches"as any)as any).select("id,name,legal_name,cnpj,address,responsible,phone,email,is_active").eq("client_id",clientId).order("name");if(error)throw error;return(data??[])as Branch[]}});
- const {data:reports=[]}=useQuery({queryKey:["waste-reports",clientId],enabled:!!clientId,queryFn:async()=>{const {data,error}=await(supabase.from("waste_reports"as any)as any).select("id,period_start,period_end,status").eq("client_id",clientId).order("period_start",{ascending:false});if(error)throw error;return(data??[])as Report[]}}); useEffect(()=>{if(!reportId&&reports[0])setReportId(reports[0].id)},[reports,reportId]); const report=reports.find(r=>r.id===reportId); useEffect(()=>{if(isAdmin&&report?.status==="draft"){void(supabase.from("waste_reports"as any)as any).update({status:"published"}).eq("id",report.id).then(()=>void qc.invalidateQueries({queryKey:["waste-reports",clientId]}))}},[isAdmin,report?.id,report?.status,clientId,qc]);
- const reportQuery=<T,>(key:string,table:string)=>useQuery({queryKey:[key,reportId],enabled:!!reportId,queryFn:async()=>{const {data,error}=await(supabase.from(table as any)as any).select("*").eq("report_id",reportId);if(error)throw error;return(data??[])as T[]}}); const {data:moves=[]}=reportQuery<Movement>("waste-movements","waste_movements"); const {data:rates=[]}=reportQuery<Rate>("waste-rates","waste_billing_rates"); const {data:reportServices=[]}=reportQuery<ReportService>("waste-report-services","waste_report_services"); const {data:tickets=[]}=reportQuery<Ticket>("waste-tickets","waste_weighing_tickets"); const reportIds=reports.map(item=>item.id); const {data:allClientMoves=[]}=useQuery({queryKey:["waste-report-history",clientId,reportIds.join(",")],enabled:!!clientId&&reportIds.length>0,queryFn:async()=>{const{data,error}=await(supabase.from("waste_movements"as any)as any).select("*").in("report_id",reportIds);if(error)throw error;return(data??[])as Movement[]}});
- const active=residues.filter(r=>r.active); const activeEq=equipment.filter(e=>e.active); const activeContainers=activeEq.filter(e=>e.category==="cacamba"); const activeServices=services.filter(s=>s.active); const refreshClient=()=>["waste-residues","waste-equipment","waste-services","client-branches"].forEach(key=>void qc.invalidateQueries({queryKey:[key,clientId]})); const refreshReport=()=>["waste-movements","waste-rates","waste-report-services","waste-tickets"].forEach(key=>void qc.invalidateQueries({queryKey:[key,reportId]}));
- const addResidue=useMutation({mutationFn:async()=>{if(!clientId||!resForm.name)throw Error("Informe o tipo de resíduo.");const payload={client_id:clientId,name:resForm.name,waste_class:resForm.waste_class,unit:resForm.unit,default_rental_rate:Number(resForm.rental),default_exchange_rate:Number(resForm.exchange),default_treatment_rate:Number(resForm.treatment)};const query=(supabase.from("waste_residues"as any)as any);const {error}=editingResidue?await query.update(payload).eq("id",editingResidue.id):await query.insert(payload);if(error)throw error},onSuccess:()=>{toast.success(editingResidue?"Resíduo atualizado.":"Resíduo cadastrado.");setEditingResidue(null);setResForm({name:"",waste_class:"class_ii",unit:"kg",rental:"0",exchange:"0",treatment:"0"});refreshClient()},onError:(e:Error)=>toast.error(e.message)});
- const addEquipment=useMutation({mutationFn:async()=>{if(!clientId||!eqForm.name||!eqForm.type)throw Error("Informe nome e tipo.");const payload={client_id:clientId,name:eqForm.name,equipment_type:eqForm.type,category:eqForm.category,load_capacity_kg:eqForm.capacity?Number(eqForm.capacity):null,capacity_unit:eqForm.capacityUnit,plate:eqForm.plate||null};const query=(supabase.from("waste_equipment"as any)as any);const {error}=editingEquipment?await query.update(payload).eq("id",editingEquipment.id):await query.insert(payload);if(error)throw error},onSuccess:()=>{toast.success(editingEquipment?"Equipamento atualizado.":"Equipamento cadastrado.");setEditingEquipment(null);setEqForm({name:"",type:"",category:"cacamba",capacity:"",capacityUnit:"kg",plate:""});refreshClient()},onError:(e:Error)=>toast.error(e.message)});
- const addService=useMutation({mutationFn:async()=>{if(!clientId||!serviceForm.name.trim())throw Error("Informe o nome do serviço.");const payload={client_id:clientId,name:serviceForm.name.trim(),default_rate:0};const query=(supabase.from("waste_services"as any)as any);const{error}=editingService?await query.update(payload).eq("id",editingService.id):await query.insert(payload);if(error)throw error},onSuccess:()=>{toast.success(editingService?"Serviço atualizado.":"Serviço cadastrado.");setEditingService(null);setServiceForm({name:""});refreshClient()},onError:(e:Error)=>toast.error(e.message)});
- const createReport=useMutation({mutationFn:async()=>{if(!clientId||!active.length)throw Error("Cadastre pelo menos um resíduo antes.");const[y,m]=period.split("-").map(Number);const {data,error}=await(supabase.from("waste_reports"as any)as any).insert({client_id:clientId,period_start:`${period}-01`,period_end:new Date(y,m,0).toISOString().slice(0,10),status:"published"}).select("id").single();if(error)throw error;const {error:rateError}=await(supabase.from("waste_billing_rates"as any)as any).insert(active.map(r=>({report_id:data.id,waste_residue_id:r.id,rental_rate:r.default_rental_rate,exchange_rate:r.default_exchange_rate,treatment_rate:r.default_treatment_rate})));if(rateError)throw rateError;if(activeServices.length){const{error:serviceError}=await(supabase.from("waste_report_services"as any)as any).insert(activeServices.map(s=>({report_id:data.id,waste_service_id:s.id,rate:0})));if(serviceError)throw serviceError}return data.id},onSuccess:(id)=>{setReportId(id);void qc.invalidateQueries({queryKey:["waste-reports",clientId]});toast.success("Relatório criado.")},onError:(e:Error)=>toast.error(e.message)});
- const addMove=useMutation({mutationFn:async()=>{if(!reportId)throw Error("Selecione ou crie um relatório antes de registrar a movimentação.");if(!move.residue||!active.some(r=>r.id===move.residue))throw Error("Selecione um resíduo cadastrado na lista.");if(!move.branch)throw Error("Selecione a filial ou pátio da movimentação.");const payload={report_id:reportId,waste_residue_id:move.residue,branch_id:move.branch,equipment_id:move.equipment||null,occurred_on:move.date,service_order:move.os||null,placed_quantity:Number(move.placed),removed_quantity:Number(move.removed),weight_kg:Number(move.weight),mtr_number:move.mtr||null,destination_name:move.destination||null};const query=(supabase.from("waste_movements"as any)as any);const{error}=editingMove?await query.update(payload).eq("id",editingMove.id):await query.insert(payload);if(error)throw error},onSuccess:()=>{setInvoiceBranch(move.branch);toast.success(editingMove?"Movimentação atualizada.":"Movimentação registrada.");setEditingMove(null);setMove({residue:"",branch:"",equipment:"",date:today(),placed:"0",removed:"0",weight:"0",os:"",mtr:"",destination:""});refreshReport()},onError:(e:Error)=>toast.error(e.message)});
- const removeRecord=async(table:string,id:string,refresh:()=>void,label:string)=>{if(!window.confirm(`Excluir ${label}?`))return;const{error}=await(supabase.from(table as any)as any).delete().eq("id",id);if(error)toast.error(error.message);else{toast.success(`${label} excluído.`);refresh()}};
- const addTicket=useMutation({mutationFn:async()=>{if(!reportId||!ticket.residue)throw Error("Selecione o resíduo.");const eq=equipment.find(e=>e.id===ticket.equipment);const{error}=await(supabase.from("waste_weighing_tickets"as any)as any).insert({report_id:reportId,waste_residue_id:ticket.residue,equipment_id:ticket.equipment||null,ticket_number:ticket.number||null,weighed_on:ticket.date,vehicle_plate:eq?.plate||null,net_weight_kg:ticket.net?Number(ticket.net):null});if(error)throw error},onSuccess:()=>{toast.success("Ticket registrado.");refreshReport()},onError:(e:Error)=>toast.error(e.message)});
- const rows=useMemo(()=>active.filter(residue=>!rates.find(r=>r.waste_residue_id===residue.id)?.excluded).map(residue=>{const ms=moves.filter(m=>m.waste_residue_id===residue.id);const rate=rates.find(r=>r.waste_residue_id===residue.id);const placed=ms.reduce((s,m)=>s+Number(m.placed_quantity||0)-Number(m.removed_quantity||0),0),exchanges=ms.reduce((s,m)=>s+Number(m.removed_quantity||0),0),weight=ms.reduce((s,m)=>s+Number(m.weight_kg||0),0);const rental=Number(rate?.rental_rate??residue.default_rental_rate),exchange=Number(rate?.exchange_rate??residue.default_exchange_rate),treatment=Number(rate?.treatment_rate??residue.default_treatment_rate);return{residue,placed,exchanges,weight,rental,exchange,treatment,total:placed*rental+exchanges*exchange+weight*treatment}}),[active,moves,rates]); const serviceRows=activeServices.filter(service=>!reportServices.find(item=>item.waste_service_id===service.id)?.excluded).map(service=>({service,rate:Number(reportServices.find(item=>item.waste_service_id===service.id)?.rate??0)})); const servicesTotal=serviceRows.reduce((sum,item)=>sum+item.rate,0); const total=rows.reduce((s,r)=>s+r.total,0)+servicesTotal; const totalWeight=rows.reduce((s,r)=>s+r.weight,0); const selectedBranch=branches.find(branch=>branch.id===invoiceBranch); const branchRows=selectedBranch?rows.map(row=>{const ms=moves.filter(m=>m.branch_id===selectedBranch.id&&m.waste_residue_id===row.residue.id);const placed=ms.reduce((s,m)=>s+Number(m.placed_quantity||0)-Number(m.removed_quantity||0),0),exchanges=ms.reduce((s,m)=>s+Number(m.removed_quantity||0),0),weight=ms.reduce((s,m)=>s+Number(m.weight_kg||0),0);return{...row,placed,exchanges,weight,total:placed*row.rental+exchanges*row.exchange+weight*row.treatment}}):rows; const invoiceRows=branchRows.filter(row=>invoiceResidues.includes(row.residue.id)); const invoiceServiceRows=serviceRows.filter(row=>invoiceServices.includes(row.service.id)); const invoiceTotal=invoiceRows.reduce((sum,row)=>sum+row.total,0)+invoiceServiceRows.reduce((sum,row)=>sum+row.rate,0);
- useEffect(()=>{setInvoiceBranch("")},[reportId]); useEffect(()=>{if(!invoiceBranch){const firstBranch=moves.find(m=>m.branch_id)?.branch_id;if(firstBranch)setInvoiceBranch(firstBranch)}},[moves,invoiceBranch]); useEffect(()=>{if(!invoiceResidues.length&&rows.length)setInvoiceResidues(rows.map(row=>row.residue.id));if(!invoiceServices.length&&serviceRows.length)setInvoiceServices(serviceRows.map(row=>row.service.id))},[reportId,rows.length,serviceRows.length]);
- const saveRate=async(r:typeof rows[number],field:"rental_rate"|"exchange_rate"|"treatment_rate",value:string)=>{const existing=rates.find(x=>x.waste_residue_id===r.residue.id);const{error}=await(supabase.from("waste_billing_rates"as any)as any).upsert({id:existing?.id,report_id:reportId,waste_residue_id:r.residue.id,rental_rate:existing?.rental_rate??r.rental,exchange_rate:existing?.exchange_rate??r.exchange,treatment_rate:existing?.treatment_rate??r.treatment,[field]:Number(value||0)},{onConflict:"report_id,waste_residue_id"});if(error)toast.error(error.message);else refreshReport()};
- const removeFromReport=async(r:typeof rows[number])=>{if(!window.confirm(`Remover ${r.residue.name} somente deste relatório? O cadastro do resíduo será mantido.`))return;const existing=rates.find(x=>x.waste_residue_id===r.residue.id);const{error}=await(supabase.from("waste_billing_rates"as any)as any).upsert({id:existing?.id,report_id:reportId,waste_residue_id:r.residue.id,rental_rate:existing?.rental_rate??r.rental,exchange_rate:existing?.exchange_rate??r.exchange,treatment_rate:existing?.treatment_rate??r.treatment,excluded:true},{onConflict:"report_id,waste_residue_id"});if(error)toast.error(error.message);else{toast.success("Item removido deste relatório.");refreshReport()}};
- const pdf=async()=>{if(!report)return;if(!selectedBranch){toast.error("Selecione a filial ou pátio do demonstrativo.");return}const{jsPDF}=await import("jspdf");const doc=new jsPDF();const client=clients.find(c=>c.id===clientId);const pageWidth=210;doc.setFillColor(62,122,79);doc.rect(0,0,pageWidth,50,"F");doc.setFillColor(101,163,84);doc.circle(196,9,18,"F");doc.setFillColor(138,190,92);doc.circle(205,20,17,"F");doc.setDrawColor(187,215,139);doc.setLineWidth(.7);doc.line(182,37,198,22);doc.line(191,31,185,25);doc.line(194,27,202,26);doc.setFillColor(250,253,249);doc.roundedRect(12,6,47,35,3,3,"F");doc.setDrawColor(210,229,205);doc.setLineWidth(.35);doc.roundedRect(12,6,47,35,3,3,"S");try{const image=new Image();image.src=jacobyLogo;await image.decode();doc.addImage(image,"PNG",15,10,41,25)}catch{}doc.setTextColor(255,255,255);doc.setFontSize(17);doc.setFont("helvetica","bold");doc.text("DEMONSTRATIVO DE FATURAMENTO",65,20);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.text(`Período: ${formatDate(report.period_start)} a ${formatDate(report.period_end)}`,65,28);doc.text(client?.name||"Cliente",65,35);let y=60;doc.setFillColor(244,248,242);doc.roundedRect(14,y,182,31,3,3,"F");doc.setDrawColor(184,210,176);doc.roundedRect(14,y,182,31,3,3,"S");doc.setTextColor(39,61,45);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(selectedBranch.name,20,y+9);const branchDetails=[selectedBranch.legal_name,selectedBranch.cnpj&&`CNPJ: ${selectedBranch.cnpj}`,selectedBranch.address,selectedBranch.responsible&&`Responsável: ${selectedBranch.responsible}`,selectedBranch.phone,selectedBranch.email].filter(Boolean).join(" · ");doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(93,112,97);const detailLines=doc.splitTextToSize(branchDetails||"Dados cadastrais não informados.",168);doc.text(detailLines,20,y+16);y+=40;doc.setFillColor(35,96,58);doc.roundedRect(14,y,182,9,2,2,"F");doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("ITEM",20,y+6);doc.text("TIPO",104,y+6);doc.text("QUANTIDADE",139,y+6);doc.text("VALOR",190,y+6,{align:"right"});y+=9;const items=[...invoiceRows.map(row=>({name:row.residue.name,type:"Resíduo",quantity:`${n(row.weight)} ${row.residue.unit}`,value:row.total})),...invoiceServiceRows.map(row=>({name:row.service.name,type:"Serviço",quantity:"Avulso",value:row.rate}))];if(!items.length){doc.setTextColor(93,112,97);doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text("Nenhum item selecionado.",20,y+12);y+=18}else{items.forEach((item,index)=>{if(index%2===0){doc.setFillColor(247,250,246);doc.rect(14,y,182,10,"F")}doc.setTextColor(39,61,45);doc.setFont("helvetica",index===0?"bold":"normal");doc.setFontSize(9);doc.text(item.name,20,y+6.5);doc.setFont("helvetica","normal");doc.setTextColor(93,112,97);doc.text(item.type,104,y+6.5);doc.text(item.quantity,139,y+6.5);doc.setTextColor(39,61,45);doc.text(money(item.value),190,y+6.5,{align:"right"});y+=10})}y+=8;doc.setFillColor(232,244,226);doc.roundedRect(118,y,78,18,3,3,"F");doc.setTextColor(35,96,58);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("TOTAL DO DEMONSTRATIVO",124,y+7);doc.setFontSize(14);doc.text(money(invoiceTotal),190,y+14,{align:"right"});doc.setDrawColor(153,190,125);doc.setLineWidth(.35);doc.line(14,274,196,274);doc.setFillColor(232,244,226);doc.circle(22,281,5,"F");doc.setDrawColor(65,131,71);doc.setLineWidth(.5);doc.line(22,285,22,278);doc.line(22,281,18,279);doc.line(22,281,26,278);doc.setTextColor(93,112,97);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos",31,283);doc.text("Soluções que respeitam o meio ambiente.",196,283,{align:"right"});doc.save(`demonstrativo-${selectedBranch.name.replace(/[^a-z0-9]/gi,"-").toLowerCase()}-${report.period_start}.pdf`)};
- const saveServiceRate=async(item:typeof serviceRows[number],value:string)=>{const existing=reportServices.find(row=>row.waste_service_id===item.service.id);const{error}=await(supabase.from("waste_report_services"as any)as any).upsert({id:existing?.id,report_id:reportId,waste_service_id:item.service.id,rate:Number(value||0)},{onConflict:"report_id,waste_service_id"});if(error)toast.error(error.message);else refreshReport()};
- const setServiceIncluded=async(service:Service,included:boolean)=>{const existing=reportServices.find(row=>row.waste_service_id===service.id);const{error}=await(supabase.from("waste_report_services"as any)as any).upsert({id:existing?.id,report_id:reportId,waste_service_id:service.id,rate:existing?.rate??0,excluded:!included},{onConflict:"report_id,waste_service_id"});if(error)toast.error(error.message);else refreshReport()};
- const pageTitle=catalogTab==="relatorios"?"Relatórios de resíduos":catalogTab==="faturamento"?"Faturamento":catalogTab==="residuos"?"Cadastro de resíduos":catalogTab==="equipamentos"?"Cadastro de equipamentos":catalogTab==="servicos"?"Cadastro de serviços":"Gestão de Resíduos"; if(loading||(isClient&&!linked))return <div className="p-6 text-sm text-muted-foreground">Carregando o portal do cliente…</div>;
- return <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6"><header className="flex justify-between gap-4"><div><p className="text-sm font-medium text-primary">{portal?"Portal do Cliente":"Controle ambiental integrado"}</p><h1 className="text-2xl font-bold">{pageTitle}</h1></div>{!catalogTab&&report&&<Button onClick={()=>void pdf()}><Download className="mr-2 h-4 w-4"/>Gerar PDF</Button>}</header>{catalogTab?<Card className="max-w-xl p-4"><Field label="Cliente">{isClient?<p className="mt-2 font-medium">{clients.find(c=>c.id===clientId)?.name}</p>:<Select value={clientId} onValueChange={v=>{setClientId(v);setReportId("")}}><SelectTrigger><SelectValue placeholder="Cliente"/></SelectTrigger><SelectContent>{clients.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>}</Field></Card>:<Card className="grid gap-3 p-4 md:grid-cols-4"><Field label="Cliente">{isClient?<p className="mt-2 font-medium">{clients.find(c=>c.id===clientId)?.name}</p>:<Select value={clientId} onValueChange={v=>{setClientId(v);setReportId("")}}><SelectTrigger><SelectValue placeholder="Cliente"/></SelectTrigger><SelectContent>{clients.map(c=><SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>}</Field><Field label="Relatório"><Select value={reportId} onValueChange={setReportId}><SelectTrigger><SelectValue placeholder="Selecionar"/></SelectTrigger><SelectContent>{reports.map(r=><SelectItem key={r.id} value={r.id}>{r.period_start} · {r.status}</SelectItem>)}</SelectContent></Select></Field>{isAdmin&&<><Field label="Novo período"><Input type="month" value={period} onChange={e=>setPeriod(e.target.value)}/></Field><Button className="self-end" onClick={()=>createReport.mutate()}><FilePlus2 className="mr-2 h-4 w-4"/>Novo relatório</Button></>}</Card>}
- {catalogTab==="faturamento"&&view==="faturamento"&&<InvoiceConfigurator branch={selectedBranch} rows={rows} selectedResidues={invoiceResidues} onResidues={setInvoiceResidues} services={serviceRows} selectedServices={invoiceServices} onServices={setInvoiceServices} total={invoiceTotal} onGenerate={()=>void pdf()}/>}<Tabs value={view} onValueChange={setView}>{catalogTab==="faturamento"&&<TabsList><TabsTrigger value="movimentos">Movimentações</TabsTrigger><TabsTrigger value="faturamento">Demonstrativo de faturamento</TabsTrigger></TabsList>}{!catalogTab&&<TabsList className="h-auto w-full justify-start overflow-x-auto"><TabsTrigger value="painel">Relatórios</TabsTrigger><TabsTrigger value="movimentos">Faturamento · movimentações</TabsTrigger><TabsTrigger value="faturamento">Faturamento · demonstrativo</TabsTrigger>{isAdmin&&<TabsTrigger value="servicos">Cadastro de serviços</TabsTrigger>}</TabsList>}
- <TabsContent value="painel" className="space-y-4"><AnnualWasteReport moves={catalogTab==="relatorios"?allClientMoves:moves} branches={branches} residues={residues} clientName={clients.find(client=>client.id===clientId)?.name||"Cliente"} year={reportYear} month={reportMonth} onYear={setReportYear} onMonth={setReportMonth}/></TabsContent>
- <TabsContent value="residuos" className="space-y-4"><Card className="p-4"><h2 className="font-semibold">{editingResidue?"Editar resíduo":"Novo resíduo"}</h2><p className="text-sm text-muted-foreground">O demonstrativo puxa estas categorias e os valores cadastrados.</p><div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4"><Field label="Tipo"><Input value={resForm.name} onChange={e=>setResForm({...resForm,name:e.target.value})}/></Field><Field label="Classe"><Select value={resForm.waste_class} onValueChange={v=>setResForm({...resForm,waste_class:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="class_i">Classe I</SelectItem><SelectItem value="class_ii">Classe II</SelectItem></SelectContent></Select></Field><Field label="Locação"><Input type="number" value={resForm.rental} onChange={e=>setResForm({...resForm,rental:e.target.value})}/></Field><Field label="Troca"><Input type="number" value={resForm.exchange} onChange={e=>setResForm({...resForm,exchange:e.target.value})}/></Field><Field label="Tratamento/kg"><Input type="number" value={resForm.treatment} onChange={e=>setResForm({...resForm,treatment:e.target.value})}/></Field><div className="flex gap-2 self-end"><Button onClick={()=>addResidue.mutate()}>{editingResidue?"Salvar":"Cadastrar"}</Button>{editingResidue&&<Button variant="outline" onClick={()=>{setEditingResidue(null);setResForm({name:"",waste_class:"class_ii",unit:"kg",rental:"0",exchange:"0",treatment:"0"})}}>Cancelar</Button>}</div></div></Card><ActionTable headers={["Resíduo","Classe","Locação","Troca","Tratamento","Ações"]} rows={residues.map(r=>[r.name,r.waste_class==="class_i"?"Classe I":"Classe II",money(r.default_rental_rate),money(r.default_exchange_rate),money(r.default_treatment_rate),<div className="flex gap-1"><Button size="icon" variant="ghost" title="Editar" onClick={()=>{setEditingResidue(r);setResForm({name:r.name,waste_class:r.waste_class,unit:r.unit,rental:String(r.default_rental_rate),exchange:String(r.default_exchange_rate),treatment:String(r.default_treatment_rate)})}}><Pencil className="h-4 w-4"/></Button><Button size="icon" variant="ghost" title="Excluir" onClick={()=>void removeRecord("waste_residues",r.id,refreshClient,"resíduo")}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>])}/></TabsContent>
- <TabsContent value="servicos" className="space-y-4"><Card className="p-4"><h2 className="font-semibold">{editingService?"Editar serviço":"Novo serviço"}</h2><p className="text-sm text-muted-foreground">Cadastre somente o nome. O valor será definido no demonstrativo de faturamento de cada relatório.</p><div className="mt-3 grid gap-3 md:grid-cols-3"><Field label="Nome do serviço"><Input value={serviceForm.name} onChange={e=>setServiceForm({...serviceForm,name:e.target.value})}/></Field><div className="flex gap-2 self-end"><Button onClick={()=>addService.mutate()}>{editingService?"Salvar":"Cadastrar"}</Button>{editingService&&<Button variant="outline" onClick={()=>{setEditingService(null);setServiceForm({name:""})}}>Cancelar</Button>}</div></div></Card><ActionTable headers={["Serviço","Ações"]} rows={services.map(s=>[s.name,<div className="flex gap-1"><Button size="icon" variant="ghost" title="Editar" onClick={()=>{setEditingService(s);setServiceForm({name:s.name})}}><Pencil className="h-4 w-4"/></Button><Button size="icon" variant="ghost" title="Excluir" onClick={()=>void removeRecord("waste_services",s.id,refreshClient,"serviço")}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>])}/></TabsContent>
- <TabsContent value="equipamentos" className="space-y-4"><Card className="p-4"><h2 className="font-semibold">{editingEquipment?"Editar equipamento":"Novo equipamento"}</h2><div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-6"><Field label="Nome"><Input value={eqForm.name} onChange={e=>setEqForm({...eqForm,name:e.target.value})}/></Field><Field label="Tipo"><Input value={eqForm.type} onChange={e=>setEqForm({...eqForm,type:e.target.value})}/></Field><Field label="Categoria"><Select value={eqForm.category} onValueChange={v=>setEqForm({...eqForm,category:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="cacamba">Caçamba</SelectItem><SelectItem value="veiculo">Veículo</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent></Select></Field><Field label="Capacidade"><Input type="number" value={eqForm.capacity} onChange={e=>setEqForm({...eqForm,capacity:e.target.value})}/></Field><Field label="Unidade de medida"><Select value={eqForm.capacityUnit} onValueChange={v=>setEqForm({...eqForm,capacityUnit:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{[["litros","Litros"],["kg","KG"],["unidade","Unidade"],["tonelada","Tonelada"],["m3","Metro cúbico"]].map(([value,label])=><SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></Field><Field label="Placa"><Input value={eqForm.plate} onChange={e=>setEqForm({...eqForm,plate:e.target.value.toUpperCase()})}/></Field><div className="flex gap-2 self-end"><Button onClick={()=>addEquipment.mutate()}>{editingEquipment?"Salvar":"Cadastrar"}</Button>{editingEquipment&&<Button variant="outline" onClick={()=>{setEditingEquipment(null);setEqForm({name:"",type:"",category:"cacamba",capacity:"",capacityUnit:"kg",plate:""})}}>Cancelar</Button>}</div></div></Card><ActionTable headers={["Nome","Categoria","Tipo","Capacidade","Placa","Ações"]} rows={equipment.map(e=>[e.name,e.category==="cacamba"?"Caçamba":e.category==="veiculo"?"Veículo":"Outro",e.equipment_type,e.load_capacity_kg?`${n(e.load_capacity_kg)} ${e.capacity_unit||"kg"}`:"—",e.plate||"—",<div className="flex gap-1"><Button size="icon" variant="ghost" title="Editar" onClick={()=>{setEditingEquipment(e);setEqForm({name:e.name,type:e.equipment_type,category:e.category||"outro",capacity:e.load_capacity_kg===null?"":String(e.load_capacity_kg),capacityUnit:e.capacity_unit||"kg",plate:e.plate||""})}}><Pencil className="h-4 w-4"/></Button><Button size="icon" variant="ghost" title="Excluir" onClick={()=>void removeRecord("waste_equipment",e.id,refreshClient,"equipamento")}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>])}/></TabsContent>
- <TabsContent value="movimentos" className="space-y-4">
-  {isAdmin&&<Card className="p-4"><h2 className="font-semibold">{editingMove?"Editar movimentação":"Nova movimentação"}</h2><p className="text-sm text-muted-foreground">Selecione o resíduo, a unidade/pátio e a caçamba antes de registrar.</p><div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-   <Field label="Resíduo"><ResidueSelect residues={active} value={move.residue} onChange={v=>setMove(current=>({...current,residue:v}))}/></Field>
-   <Field label="Filial ou pátio"><Select value={move.branch} onValueChange={v=>{setMove(current=>({...current,branch:v}));setInvoiceBranch(v)}}><SelectTrigger><SelectValue placeholder="Selecionar unidade"/></SelectTrigger><SelectContent>{branches.filter(b=>b.is_active).map(b=><SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent></Select></Field>
-   <Field label="Caçamba"><Select value={move.equipment} onValueChange={v=>setMove(current=>({...current,equipment:v}))}><SelectTrigger><SelectValue placeholder="Selecionar caçamba"/></SelectTrigger><SelectContent>{activeContainers.map(e=><SelectItem key={e.id} value={e.id}>{e.name}{e.plate?` · ${e.plate}`:""}</SelectItem>)}</SelectContent></Select></Field>
-   <Field label="Data"><Input type="date" value={move.date} onChange={e=>setMove({...move,date:e.target.value})}/></Field><Field label="Peso kg"><Input type="number" value={move.weight} onChange={e=>setMove({...move,weight:e.target.value})}/></Field><Field label="Colocadas"><Input type="number" value={move.placed} onChange={e=>setMove({...move,placed:e.target.value})}/></Field><Field label="Removidas"><Input type="number" value={move.removed} onChange={e=>setMove({...move,removed:e.target.value})}/></Field><Field label="MTR"><Input value={move.mtr} onChange={e=>setMove({...move,mtr:e.target.value})}/></Field><Field label="Destinação"><Input value={move.destination} onChange={e=>setMove({...move,destination:e.target.value})}/></Field>
-   <div className="flex gap-2 self-end"><Button onClick={()=>addMove.mutate()}>{editingMove?"Salvar":"Registrar"}</Button>{editingMove&&<Button variant="outline" onClick={()=>{setEditingMove(null);setMove({residue:"",branch:"",equipment:"",date:today(),placed:"0",removed:"0",weight:"0",os:"",mtr:"",destination:""})}}>Cancelar</Button>}</div>
-  </div></Card>}
-  <ActionTable headers={["Data","Unidade","Caçamba","Resíduo","Peso","Removidas","MTR","Ações"]} rows={moves.map(m=>[formatDate(m.occurred_on),branches.find(b=>b.id===m.branch_id)?.name||"—",equipment.find(e=>e.id===m.equipment_id)?.name||"—",residues.find(r=>r.id===m.waste_residue_id)?.name||"—",`${n(m.weight_kg)} kg`,n(m.removed_quantity),m.mtr_number||"—",isAdmin?<div className="flex gap-1"><Button size="icon" variant="ghost" title="Editar" onClick={()=>{setEditingMove(m);setInvoiceBranch(m.branch_id||"");setMove({residue:m.waste_residue_id||"",branch:m.branch_id||"",equipment:m.equipment_id||"",date:m.occurred_on,placed:String(m.placed_quantity||0),removed:String(m.removed_quantity||0),weight:String(m.weight_kg||0),os:m.service_order||"",mtr:m.mtr_number||"",destination:m.destination_name||""})}}><Pencil className="h-4 w-4"/></Button><Button size="icon" variant="ghost" title="Excluir" onClick={()=>void removeRecord("waste_movements",m.id,refreshReport,"movimentação")}><Trash2 className="h-4 w-4 text-destructive"/></Button></div>:"—"])}/>
- </TabsContent>
- <TabsContent value="faturamento"><Tabs defaultValue="locacao"><TabsList><TabsTrigger value="locacao">Valor da locação</TabsTrigger><TabsTrigger value="troca">Valor da troca</TabsTrigger><TabsTrigger value="tratamento">Tratamento</TabsTrigger><TabsTrigger value="servicos">Serviços</TabsTrigger><TabsTrigger value="total">Total</TabsTrigger></TabsList>{([['locacao','rental_rate','Locação'] as const,['troca','exchange_rate','Troca'] as const,['tratamento','treatment_rate','Tratamento/kg'] as const]).map(([tab,field,label])=><TabsContent key={tab} value={tab}><BillingTable rows={rows} label={label} field={field} admin={isAdmin} save={saveRate} remove={removeFromReport}/></TabsContent>)}<TabsContent value="servicos"><ServiceReportTable services={activeServices} reportServices={reportServices} admin={isAdmin} onToggle={setServiceIncluded} onRate={saveServiceRate}/></TabsContent><TabsContent value="total"><SimpleTable headers={["Resíduo","Locação","Troca","Tratamento","Total"]} rows={rows.map(r=>[r.residue.name,money(r.placed*r.rental),money(r.exchanges*r.exchange),money(r.weight*r.treatment),money(r.total)])}/>{serviceRows.length>0&&<SimpleTable headers={["Serviço","Valor"]} rows={serviceRows.map(item=>[item.service.name,money(item.rate)])}/>}<Card className="p-4 text-right font-bold">Total geral: {money(total)}</Card></TabsContent></Tabs></TabsContent>
- <TabsContent value="tickets" className="space-y-4">{isAdmin&&<Card className="p-4"><h2 className="font-semibold">Novo ticket</h2><div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4"><Field label="Resíduo"><ResidueSelect residues={active} value={ticket.residue} onChange={v=>setTicket({...ticket,residue:v})}/></Field><Field label="Equipamento"><Select value={ticket.equipment} onValueChange={v=>setTicket({...ticket,equipment:v})}><SelectTrigger><SelectValue placeholder="Selecionar"/></SelectTrigger><SelectContent>{activeEq.map(e=><SelectItem key={e.id} value={e.id}>{e.name}{e.plate?` · ${e.plate}`:""}</SelectItem>)}</SelectContent></Select></Field><Field label="Data"><Input type="date" value={ticket.date} onChange={e=>setTicket({...ticket,date:e.target.value})}/></Field><Field label="Peso líquido"><Input type="number" value={ticket.net} onChange={e=>setTicket({...ticket,net:e.target.value})}/></Field><Button className="self-end" onClick={()=>addTicket.mutate()}>Registrar</Button></div></Card>}<SimpleTable headers={["Data","Resíduo","Equipamento","Placa","Peso"]} rows={tickets.map(t=>[t.weighed_on||"—",residues.find(r=>r.id===t.waste_residue_id)?.name||"—",equipment.find(e=>e.id===t.equipment_id)?.name||"—",t.vehicle_plate||"—",`${n(Number(t.net_weight_kg||0))} kg`])}/></TabsContent></Tabs></div>
+function CreatableOptionInput({
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const filter = value.trim().toLocaleLowerCase("pt-BR");
+  const visibleOptions = options.filter((option) =>
+    option.toLocaleLowerCase("pt-BR").includes(filter),
+  );
+  const existingOption = options.some((option) => option.toLocaleLowerCase("pt-BR") === filter);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <Input
+          value={value}
+          placeholder={placeholder}
+          autoComplete="off"
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setOpen(true);
+          }}
+        />
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        avoidCollisions={false}
+        className="w-80 border-border bg-card p-1 shadow-lg"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        {visibleOptions.length > 0 && (
+          <div className="max-h-44 overflow-y-auto py-1">
+            {visibleOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
+        {value.trim() && !existingOption && (
+          <button
+            type="button"
+            className="flex w-full rounded-md border-t border-border px-3 py-2 text-left text-sm font-medium text-primary hover:bg-primary/5"
+            onClick={() => setOpen(false)}
+          >
+            Usar “{value.trim()}” como nova opção
+          </button>
+        )}
+        {!visibleOptions.length && !value.trim() && (
+          <p className="px-3 py-2 text-sm text-muted-foreground">Nenhuma opção cadastrada ainda.</p>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
-function Metric({title,value,icon}:{title:string;value:string;icon:React.ReactNode}){return <Card className="p-4"><div className="flex justify-between text-muted-foreground"><span>{title}</span>{icon}</div><strong className="mt-2 block text-xl">{value}</strong></Card>}
-function AnnualWasteReport({moves,branches,residues,clientName,year,month,onYear,onMonth}:{moves:Movement[];branches:Branch[];residues:Residue[];clientName:string;year:string;month:string;onYear:(value:string)=>void;onMonth:(value:string)=>void}){
- const reportRef=useRef<HTMLDivElement>(null); const years=Array.from(new Set(moves.map(move=>move.occurred_on.slice(0,4)))).sort((a,b)=>b.localeCompare(a));
- const filtered=moves.filter(move=>move.occurred_on.slice(0,4)===year&&(month==="todos"||move.occurred_on.slice(5,7)===month));
- const periodLabel=month==="todos"?`Ano de ${year}`:`${new Intl.DateTimeFormat("pt-BR",{month:"long"}).format(new Date(Number(year),Number(month)-1,1))} de ${year}`;
- const residueData=residues.map(residue=>({name:residue.name,kg:filtered.filter(move=>move.waste_residue_id===residue.id).reduce((sum,move)=>sum+Number(move.weight_kg||0),0)})).filter(item=>item.kg>0).sort((a,b)=>b.kg-a.kg);
- const months=month==="todos"?Array.from({length:12},(_,index)=>String(index+1).padStart(2,"0")):[month]; const monthlyData=months.map(value=>({name:new Intl.DateTimeFormat("pt-BR",{month:"short"}).format(new Date(Number(year),Number(value)-1,1)).replace(".",""),kg:filtered.filter(move=>move.occurred_on.slice(5,7)===value).reduce((sum,move)=>sum+Number(move.weight_kg||0),0)}));
- const days=Array.from(new Set(filtered.map(move=>move.occurred_on))).sort((a,b)=>b.localeCompare(a)).map(date=>{const movements=filtered.filter(move=>move.occurred_on===date);const units=Array.from(new Set(movements.map(move=>move.branch_id||"matriz"))).map(branchId=>{const unitMoves=movements.filter(move=>(move.branch_id||"matriz")===branchId);return {name:branchId==="matriz"?"Matriz":branches.find(branch=>branch.id===branchId)?.name||"Filial",weight:unitMoves.reduce((sum,move)=>sum+Number(move.weight_kg||0),0)}});return {date,units,total:units.reduce((sum,unit)=>sum+unit.weight,0)}});
- const exportPdf=async()=>{const{jsPDF}=await import("jspdf");const doc=new jsPDF();doc.setFillColor(62,122,79);doc.rect(0,0,210,42,"F");doc.setFillColor(138,190,92);doc.circle(198,12,17,"F");try{const image=new Image();image.src=jacobyLogo;await image.decode();doc.addImage(image,"PNG",14,7,42,25)}catch{}doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(16);doc.text("RELATÓRIO DE GESTÃO DE RESÍDUOS",64,18);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.text(clientName,64,26);doc.text(periodLabel,64,33);let y=54;doc.setTextColor(39,61,45);doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text("Resíduos mais movimentados",14,y);doc.setFont("helvetica","normal");const topResidues=residueData.slice(0,6);const maxResidue=Math.max(...topResidues.map(item=>item.kg),1);topResidues.forEach(item=>{y+=10;doc.setTextColor(39,61,45);doc.setFontSize(9);doc.text(item.name,14,y);doc.setFillColor(229,240,225);doc.roundedRect(70,y-5,92,5,2,2,"F");doc.setFillColor(55,122,74);doc.roundedRect(70,y-5,92*item.kg/maxResidue,5,2,2,"F");doc.setTextColor(39,61,45);doc.text(`${n(item.kg)} kg`,196,y,{align:"right"})});if(!topResidues.length){doc.setTextColor(93,112,97);doc.text("Nenhum resíduo movimentado no período.",14,y+10);y+=10}y+=18;doc.setTextColor(39,61,45);doc.setFont("helvetica","bold");doc.setFontSize(12);doc.text("Evolução mensal",14,y);doc.setFont("helvetica","normal");const maxMonth=Math.max(...monthlyData.map(item=>item.kg),1);const barWidth=monthlyData.length===1?36:11;monthlyData.forEach((item,index)=>{const x=18+index*14;const height=48*item.kg/maxMonth;doc.setFillColor(127,176,105);doc.roundedRect(x,y+54-height,barWidth,height,2,2,"F");doc.setTextColor(93,112,97);doc.setFontSize(7);doc.text(item.name,x+barWidth/2,y+61,{align:"center"});if(item.kg>0){doc.setTextColor(39,61,45);doc.text(n(item.kg),x+barWidth/2,y+51-height,{align:"center"})}});y+=75;doc.setFillColor(244,248,242);doc.roundedRect(14,y,182,27,3,3,"F");doc.setTextColor(39,61,45);doc.setFont("helvetica","bold");doc.setFontSize(10);doc.text("Resumo do período",20,y+9);doc.setFont("helvetica","normal");doc.setFontSize(8);const totalKg=filtered.reduce((sum,move)=>sum+Number(move.weight_kg||0),0);doc.text(`Peso movimentado: ${n(totalKg)} kg · Resíduos registrados: ${residueData.length} · Lançamentos: ${filtered.length}`,20,y+18);doc.setDrawColor(153,190,125);doc.line(14,274,196,274);doc.setTextColor(93,112,97);doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos",14,283);doc.text("Soluções que respeitam o meio ambiente.",196,283,{align:"right"});appendDetailedMovements(doc,filtered,branches,residues,clientName,periodLabel);doc.save(`relatorio-residuos-${year}${month==="todos"?"":`-${month}`}.pdf`)};
- return <><Card className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]"><Field label="Ano"><Select value={year} onValueChange={onYear}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{(years.length?years:[String(new Date().getFullYear())]).map(value=><SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></Field><Field label="Mês"><Select value={month} onValueChange={onMonth}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="todos">Todos os meses</SelectItem>{Array.from({length:12},(_,index)=>{const value=String(index+1).padStart(2,"0");return <SelectItem key={value} value={value}>{new Intl.DateTimeFormat("pt-BR",{month:"long"}).format(new Date(2026,index,1))}</SelectItem>})}</SelectContent></Select></Field><Button className="self-end" onClick={()=>void exportPdf()}><Download className="mr-2 h-4 w-4"/>Exportar PDF</Button></Card><div ref={reportRef} className="space-y-4 bg-background p-1"><div className="rounded-lg border border-primary/20 bg-primary/5 p-4"><p className="text-sm text-primary">Relatório de gestão de resíduos</p><h2 className="text-xl font-bold">{clientName}</h2><p className="text-sm text-muted-foreground">{periodLabel}</p></div><div className="grid gap-4 lg:grid-cols-2"><Card className="p-4"><h2 className="font-semibold">Resíduos mais movimentados</h2><p className="mb-3 text-sm text-muted-foreground">Peso total por tipo de resíduo.</p><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={residueData}><XAxis dataKey="name" interval={0} angle={-18} textAnchor="end" height={60}/><YAxis/><Tooltip formatter={(value:number)=>`${n(Number(value))} kg`}/><Bar dataKey="kg" fill="hsl(var(--primary))" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></Card><Card className="p-4"><h2 className="font-semibold">Evolução mensal</h2><p className="mb-3 text-sm text-muted-foreground">Kg movimentados mês a mês.</p><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={monthlyData}><XAxis dataKey="name"/><YAxis/><Tooltip formatter={(value:number)=>`${n(Number(value))} kg`}/><Bar dataKey="kg" fill="#7fb069" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></Card></div><Card className="p-4"><h2 className="font-semibold">Resumo dos resíduos</h2><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{residueData.map(item=><div key={item.name} className="rounded-md bg-muted/50 p-3"><strong className="block">{item.name}</strong><span className="text-sm text-primary">{n(item.kg)} kg</span></div>)}{!residueData.length&&<p className="text-sm text-muted-foreground">Nenhum resíduo movimentado no período.</p>}</div></Card></div><div className="space-y-3">{days.map(day=><Card key={day.date} className="p-4"><div className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-3"><h2 className="font-semibold">{formatDate(day.date)}</h2><span className="text-sm text-muted-foreground">Movimentações do dia</span></div><div className="space-y-2 py-3">{day.units.map(unit=><div key={unit.name} className="flex items-center justify-between text-sm"><span>{unit.name}</span><strong>{n(unit.weight)} kg</strong></div>)}</div><div className="border-t pt-3 text-right"><span className="mr-2 text-sm text-muted-foreground">Total do dia</span><strong className="text-primary">{n(day.total)} kg</strong></div></Card>)}{!days.length&&<Card className="p-8 text-center text-muted-foreground">Nenhuma movimentação encontrada no período selecionado.</Card>}</div></>}
-function appendDetailedMovements(doc:any,moves:Movement[],branches:Branch[],residues:Residue[],clientName:string,periodLabel:string){doc.addPage();doc.setFillColor(62,122,79);doc.rect(0,0,210,28,"F");doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(14);doc.text("MOVIMENTAÇÕES POR FILIAL",14,13);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text(`${clientName} · ${periodLabel}`,14,20);let y=40;doc.setFillColor(232,244,226);doc.roundedRect(14,y,182,8,2,2,"F");doc.setTextColor(39,61,45);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("DATA",18,y+5);doc.text("FILIAL / PÁTIO",48,y+5);doc.text("RESÍDUO",107,y+5);doc.text("KG",192,y+5,{align:"right"});y+=14;moves.slice().sort((a,b)=>a.occurred_on.localeCompare(b.occurred_on)).forEach((move,index)=>{if(y>270){doc.addPage();y=20}if(index%2===0){doc.setFillColor(247,250,246);doc.rect(14,y-5,182,8,"F")}doc.setTextColor(39,61,45);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text(formatDate(move.occurred_on),18,y);doc.text(move.branch_id?branches.find(branch=>branch.id===move.branch_id)?.name||"Filial":"Matriz",48,y);doc.text(residues.find(residue=>residue.id===move.waste_residue_id)?.name||"—",107,y);doc.text(`${n(move.weight_kg)} kg`,192,y,{align:"right"});y+=8});if(!moves.length){doc.setTextColor(93,112,97);doc.text("Nenhuma movimentação encontrada no período.",14,y)}doc.setTextColor(93,112,97);doc.setFontSize(8);doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos",14,286)}
-function InvoiceConfigurator({branch,rows,selectedResidues,onResidues,services,selectedServices,onServices,total,onGenerate}:{branch:Branch|undefined;rows:any[];selectedResidues:string[];onResidues:(value:string[])=>void;services:any[];selectedServices:string[];onServices:(value:string[])=>void;total:number;onGenerate:()=>void}){const toggle=(items:string[],set:(value:string[])=>void,id:string)=>set(items.includes(id)?items.filter(value=>value!==id):[...items,id]);return <Card className="space-y-4 border-primary/20 p-4"><div><h2 className="font-semibold">Personalizar demonstrativo</h2><p className="text-sm text-muted-foreground">A filial é definida pela movimentação. Para emitir outro pátio, volte à etapa anterior e selecione a unidade correta.</p></div><div className="rounded-md border bg-muted/40 p-3 text-sm"><span className="text-muted-foreground">Filial vinculada: </span><strong>{branch?.name||"Nenhuma movimentação com filial registrada"}</strong></div><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Resíduos</Label>{rows.map(row=><label key={row.residue.id} className="flex items-center gap-2 text-sm"><Checkbox checked={selectedResidues.includes(row.residue.id)} onCheckedChange={()=>toggle(selectedResidues,onResidues,row.residue.id)}/>{row.residue.name}</label>)}</div><div className="space-y-2"><Label>Serviços</Label>{services.map(row=><label key={row.service.id} className="flex items-center gap-2 text-sm"><Checkbox checked={selectedServices.includes(row.service.id)} onCheckedChange={()=>toggle(selectedServices,onServices,row.service.id)}/>{row.service.name}</label>)}</div></div><div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3"><strong>Total selecionado: {money(total)}</strong><Button onClick={onGenerate} disabled={!branch}>Gerar PDF</Button></div></Card>}
-function ResidueSelect({residues,value,onChange}:{residues:Residue[];value:string;onChange:(v:string)=>void}){return <Select value={value} onValueChange={onChange}><SelectTrigger><SelectValue placeholder="Selecionar"/></SelectTrigger><SelectContent>{residues.map(r=><SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent></Select>}
-function SimpleTable({headers,rows}:{headers:string[];rows:string[][]}){return <Card className="overflow-x-auto p-4"><table className="min-w-[650px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground">{headers.map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={i} className="border-b">{row.map((cell,j)=><td key={j} className="p-2">{cell}</td>)}</tr>)}{!rows.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={headers.length}>Nenhum registro.</td></tr>}</tbody></table></Card>}
-function ActionTable({headers,rows}:{headers:string[];rows:React.ReactNode[][]}){return <Card className="overflow-x-auto p-4"><table className="min-w-[650px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground">{headers.map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={i} className="border-b">{row.map((cell,j)=><td key={j} className="p-2">{cell}</td>)}</tr>)}{!rows.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={headers.length}>Nenhum registro.</td></tr>}</tbody></table></Card>}
-function BillingTable({rows,label,field,admin,save,remove}:{rows:any[];label:string;field:"rental_rate"|"exchange_rate"|"treatment_rate";admin:boolean;save:(r:any,f:any,v:string)=>Promise<void>;remove:(r:any)=>Promise<void>}){const qty=(r:any)=>field==="rental_rate"?r.placed:field==="exchange_rate"?r.exchanges:r.weight;const rate=(r:any)=>field==="rental_rate"?r.rental:field==="exchange_rate"?r.exchange:r.treatment;return <Card className="overflow-x-auto p-4"><table className="min-w-[650px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Resíduo</th><th className="p-2">{field==="treatment_rate"?"Peso (kg)":"Quantidade"}</th><th className="p-2">{label}</th><th className="p-2">Subtotal</th>{admin&&<th className="p-2">Ações</th>}</tr></thead><tbody>{rows.map(r=><tr key={r.residue.id} className="border-b"><td className="p-2 font-medium">{r.residue.name}</td><td className="p-2">{n(qty(r))}</td><td className="p-2">{admin?<Input className="h-8 max-w-32" type="number" min="0" step="0.01" defaultValue={rate(r)} onBlur={e=>void save(r,field,e.target.value)}/>:money(rate(r))}</td><td className="p-2">{money(qty(r)*rate(r))}</td>{admin&&<td className="p-2"><Button size="icon" variant="ghost" title="Remover deste relatório" onClick={()=>void remove(r)}><Trash2 className="h-4 w-4 text-destructive"/></Button></td>}</tr>)}{!rows.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={admin?5:4}>Nenhum resíduo incluído neste relatório.</td></tr>}</tbody></table>{admin&&<p className="mt-3 text-xs text-muted-foreground">Altere o valor no campo ou use a lixeira para remover o item somente deste relatório.</p>}</Card>}
-function ServiceReportTable({services,reportServices,admin,onToggle,onRate}:{services:Service[];reportServices:ReportService[];admin:boolean;onToggle:(service:Service,included:boolean)=>Promise<void>;onRate:(item:{service:Service;rate:number},value:string)=>Promise<void>}){return <Card className="overflow-x-auto p-4"><p className="mb-3 text-sm text-muted-foreground">Inclua somente os serviços deste faturamento e informe o valor cobrado. Os serviços desmarcados não entram no total nem no PDF.</p><table className="min-w-[600px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Incluir</th><th className="p-2">Serviço</th><th className="p-2">Valor neste relatório</th></tr></thead><tbody>{services.map(service=>{const current=reportServices.find(item=>item.waste_service_id===service.id);const included=!current?.excluded;const rate=Number(current?.rate??0);return <tr key={service.id} className="border-b"><td className="p-2"><Checkbox checked={included} disabled={!admin} onCheckedChange={checked=>void onToggle(service,checked===true)}/></td><td className="p-2 font-medium">{service.name}</td><td className="p-2">{admin?<Input key={`${service.id}-${rate}`} className="h-8 max-w-32" disabled={!included} type="number" min="0" step="0.01" defaultValue={rate} onBlur={e=>void onRate({service,rate},e.target.value)}/>:money(rate)}</td></tr>})}{!services.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={3}>Nenhum serviço cadastrado para este cliente.</td></tr>}</tbody></table></Card>}
+
+export function WasteManagementModule({ portal = false }: { portal?: boolean }) {
+  const qc = useQueryClient();
+  const { data: clients = [] } = useClients();
+  const { isAdmin, isClient, clientId: linked, loading } = useAuth();
+  const [clientId, setClientId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem("jacoby:faturamento:cliente") || "";
+  });
+  const [reportId, setReportId] = useState("");
+  const [period, setPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
+  const [reportMonth, setReportMonth] = useState("todos");
+  const search = useRouterState({ select: (s) => s.location.search }) as { aba?: string };
+  const requestedCatalogTab = ["relatorios", "faturamento", "faturamento2", "configuracoes"].includes(
+    search.aba ?? "",
+  )
+    ? search.aba
+    : null;
+  const catalogTab =
+    isClient && requestedCatalogTab !== "relatorios" ? "relatorios" : requestedCatalogTab;
+  const targetView =
+    catalogTab === "relatorios"
+      ? "painel"
+      : catalogTab === "faturamento"
+        ? "colocacao"
+        : catalogTab === "configuracoes"
+          ? "equipamentos"
+          : (catalogTab ?? "painel");
+  const [view, setView] = useState<string>(targetView);
+  useEffect(() => setView(targetView), [targetView]);
+  const [resForm, setResForm] = useState({
+    standardId: "",
+    name: "",
+    waste_class: "class_ii",
+    unit: "kg",
+    rental: "0",
+    exchange: "0",
+    treatment: "0",
+  });
+  const [standardResidueForm, setStandardResidueForm] = useState({
+    name: "",
+    waste_class: "class_ii",
+    unit: "kg",
+  });
+  const [eqForm, setEqForm] = useState({
+    identification: "",
+    name: "",
+    type: "",
+    capacity: "",
+    capacityUnit: "m3",
+  });
+  const [serviceForm, setServiceForm] = useState({ name: "" });
+  const [move, setMove] = useState({
+    placementOrder: "",
+    residue: "",
+    branch: "",
+    equipment: "",
+    date: today(),
+    hasExchange: false,
+    exchangeCount: "0",
+    weight: "0",
+    os: "",
+    mtr: "",
+    destination: "",
+  });
+  const [placement, setPlacement] = useState({ residue: "", branch: "", equipment: "", value: "" });
+  const [ticket, setTicket] = useState({
+    residue: "",
+    equipment: "",
+    number: "",
+    date: today(),
+    net: "",
+  });
+  const [invoiceBranch, setInvoiceBranch] = useState("");
+  const [invoiceResidues, setInvoiceResidues] = useState<string[]>([]);
+  const [invoiceServices, setInvoiceServices] = useState<string[]>([]);
+  const [editingResidue, setEditingResidue] = useState<Residue | null>(null);
+  const [editingStandardResidue, setEditingStandardResidue] = useState<StandardResidueType | null>(
+    null,
+  );
+  const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [editingMove, setEditingMove] = useState<Movement | null>(null);
+  const [editingPlacement, setEditingPlacement] = useState<Movement | null>(null);
+  useEffect(() => {
+    if (isClient) {
+      setClientId(linked ?? "");
+      return;
+    }
+    if (!clients.length || (clientId && clients.some((client) => client.id === clientId))) return;
+    const savedClientId =
+      typeof window === "undefined"
+        ? ""
+        : sessionStorage.getItem("jacoby:faturamento:cliente") || "";
+    setClientId(
+      clients.some((client) => client.id === savedClientId) ? savedClientId : clients[0].id,
+    );
+  }, [isClient, linked, clientId, clients]);
+  useEffect(() => {
+    if (!isClient && clientId) sessionStorage.setItem("jacoby:faturamento:cliente", clientId);
+  }, [isClient, clientId]);
+  const clientQuery = <T,>(key: string, table: string) =>
+    useQuery({
+      queryKey: [key, clientId],
+      enabled: !!clientId,
+      queryFn: async () => {
+        const { data, error } = await (supabase.from(table as any) as any)
+          .select("*")
+          .eq("client_id", clientId);
+        if (error) throw error;
+        return (data ?? []) as T[];
+      },
+    });
+  const { data: residues = [] } = clientQuery<Residue>("waste-residues", "waste_residues");
+  const { data: standardResidueTypes = [] } = useQuery({
+    queryKey: ["standard-residue-types"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_residue_types" as any) as any)
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as StandardResidueType[];
+    },
+  });
+  const { data: equipment = [] } = clientQuery<Equipment>("waste-equipment", "waste_equipment");
+  const { data: equipmentOptions = [] } = useQuery({
+    queryKey: ["waste-equipment-options"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_equipment_options" as any) as any)
+        .select("id,option_type,name,active")
+        .eq("active", true)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as EquipmentOption[];
+    },
+  });
+  const { data: services = [] } = clientQuery<Service>("waste-services", "waste_services");
+  const { data: branches = [] } = useQuery({
+    queryKey: ["client-branches", clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("client_branches" as any) as any)
+        .select("id,name,legal_name,cnpj,address,responsible,phone,email,is_active")
+        .eq("client_id", clientId)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as Branch[];
+    },
+  });
+  const { data: reports = [] } = useQuery({
+    queryKey: ["waste-reports", clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_reports" as any) as any)
+        .select("id,period_start,period_end,status")
+        .eq("client_id", clientId)
+        .order("period_start", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Report[];
+    },
+  });
+  useEffect(() => {
+    const reportForPeriod = reports.find((item) => item.period_start === `${period}-01`);
+    setReportId(reportForPeriod?.id || "");
+  }, [clientId, period, reports]);
+  const report = reports.find((r) => r.id === reportId);
+  useEffect(() => {
+    if (isAdmin && report?.status === "draft") {
+      void (supabase.from("waste_reports" as any) as any)
+        .update({ status: "published" })
+        .eq("id", report.id)
+        .then(() => void qc.invalidateQueries({ queryKey: ["waste-reports", clientId] }));
+    }
+  }, [isAdmin, report?.id, report?.status, clientId, qc]);
+  const reportQuery = <T,>(key: string, table: string) =>
+    useQuery({
+      queryKey: [key, reportId],
+      enabled: !!reportId,
+      queryFn: async () => {
+        const { data, error } = await (supabase.from(table as any) as any)
+          .select("*")
+          .eq("report_id", reportId);
+        if (error) throw error;
+        return (data ?? []) as T[];
+      },
+    });
+  const { data: moves = [] } = reportQuery<Movement>("waste-movements", "waste_movements");
+  const { data: rates = [] } = reportQuery<Rate>("waste-rates", "waste_billing_rates");
+  const { data: reportServices = [] } = reportQuery<ReportService>(
+    "waste-report-services",
+    "waste_report_services",
+  );
+  const { data: tickets = [] } = reportQuery<Ticket>("waste-tickets", "waste_weighing_tickets");
+  const reportIds = reports.map((item) => item.id);
+  const { data: allClientMoves = [] } = useQuery({
+    queryKey: ["waste-report-history", clientId, reportIds.join(",")],
+    enabled: !!clientId && reportIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_movements" as any) as any)
+        .select("*")
+        .in("report_id", reportIds);
+      if (error) throw error;
+      return (data ?? []) as Movement[];
+    },
+  });
+  const active = residues.filter((r) => r.active);
+  const activeEq = equipment.filter((e) => e.active);
+  const vehicleModelOptions = uniqueOptionNames(
+    equipmentOptions
+      .filter((item) => item.option_type === "vehicle_model")
+      .map((item) => item.name),
+  );
+  const recipientOptions = uniqueOptionNames(
+    equipmentOptions.filter((item) => item.option_type === "recipient").map((item) => item.name),
+  );
+  const activeServices = services.filter((s) => s.active);
+  const refreshClient = () =>
+    ["waste-residues", "waste-equipment", "waste-services", "client-branches"].forEach(
+      (key) => void qc.invalidateQueries({ queryKey: [key, clientId] }),
+    );
+  const refreshReport = () =>
+    ["waste-movements", "waste-rates", "waste-report-services", "waste-tickets"].forEach(
+      (key) => void qc.invalidateQueries({ queryKey: [key, reportId] }),
+    );
+  const refreshStandardResidueTypes = () =>
+    void qc.invalidateQueries({ queryKey: ["standard-residue-types"] });
+  const refreshEquipmentOptions = () =>
+    void qc.invalidateQueries({ queryKey: ["waste-equipment-options"] });
+  const addResidue = useMutation({
+    mutationFn: async () => {
+      if (!clientId || !resForm.name) throw Error("Informe o tipo de resíduo.");
+      const payload = {
+        client_id: clientId,
+        name: resForm.name,
+        waste_class: resForm.waste_class,
+        unit: resForm.unit,
+        default_rental_rate: Number(resForm.rental),
+        default_exchange_rate: Number(resForm.exchange),
+        default_treatment_rate: Number(resForm.treatment),
+      };
+      const query = supabase.from("waste_residues" as any) as any;
+      const { error } = editingResidue
+        ? await query.update(payload).eq("id", editingResidue.id)
+        : await query.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(editingResidue ? "Resíduo atualizado." : "Resíduo cadastrado.");
+      setEditingResidue(null);
+      setResForm({
+        standardId: "",
+        name: "",
+        waste_class: "class_ii",
+        unit: "kg",
+        rental: "0",
+        exchange: "0",
+        treatment: "0",
+      });
+      refreshClient();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const saveStandardResidueType = useMutation({
+    mutationFn: async () => {
+      if (!standardResidueForm.name.trim()) throw Error("Informe o tipo padrão de resíduo.");
+      const payload = {
+        name: standardResidueForm.name.trim(),
+        waste_class: standardResidueForm.waste_class,
+        unit: standardResidueForm.unit,
+        active: true,
+      };
+      const query = supabase.from("waste_residue_types" as any) as any;
+      const { error } = editingStandardResidue
+        ? await query.update(payload).eq("id", editingStandardResidue.id)
+        : await query.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(editingStandardResidue ? "Tipo padrão atualizado." : "Tipo padrão cadastrado.");
+      setEditingStandardResidue(null);
+      setStandardResidueForm({ name: "", waste_class: "class_ii", unit: "kg" });
+      refreshStandardResidueTypes();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const addEquipment = useMutation({
+    mutationFn: async () => {
+      if (!clientId || !eqForm.name.trim() || !eqForm.type.trim())
+        throw Error("Informe veículo/modelo e recipiente.");
+      const payload = {
+        client_id: clientId,
+        identification: eqForm.identification.trim() || null,
+        name: eqForm.name.trim(),
+        equipment_type: eqForm.type.trim(),
+        category: "cacamba",
+        capacity_value: eqForm.capacity ? Number(eqForm.capacity) : null,
+        capacity_unit: eqForm.capacityUnit,
+      };
+      const query = supabase.from("waste_equipment" as any) as any;
+      const { error } = editingEquipment
+        ? await query.update(payload).eq("id", editingEquipment.id)
+        : await query.insert(payload);
+      if (error) throw error;
+      const existingVehicleModel = equipmentOptions.find(
+        (item) =>
+          item.option_type === "vehicle_model" && optionKey(item.name) === optionKey(payload.name),
+      );
+      const existingRecipient = equipmentOptions.find(
+        (item) =>
+          item.option_type === "recipient" &&
+          optionKey(item.name) === optionKey(payload.equipment_type),
+      );
+      const { error: optionError } = await (
+        supabase.from("waste_equipment_options" as any) as any
+      ).upsert(
+        [
+          { option_type: "vehicle_model", name: existingVehicleModel?.name ?? payload.name },
+          { option_type: "recipient", name: existingRecipient?.name ?? payload.equipment_type },
+        ],
+        { onConflict: "option_type,name" },
+      );
+      if (optionError) throw optionError;
+    },
+    onSuccess: () => {
+      toast.success(editingEquipment ? "Equipamento atualizado." : "Equipamento cadastrado.");
+      setEditingEquipment(null);
+      setEqForm({
+        identification: "",
+        name: "",
+        type: "",
+        capacity: "",
+        capacityUnit: "m3",
+      });
+      refreshClient();
+      refreshEquipmentOptions();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const addService = useMutation({
+    mutationFn: async () => {
+      if (!clientId || !serviceForm.name.trim()) throw Error("Informe o nome do serviço.");
+      const payload = { client_id: clientId, name: serviceForm.name.trim(), default_rate: 0 };
+      const query = supabase.from("waste_services" as any) as any;
+      const { error } = editingService
+        ? await query.update(payload).eq("id", editingService.id)
+        : await query.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(editingService ? "Serviço atualizado." : "Serviço cadastrado.");
+      setEditingService(null);
+      setServiceForm({ name: "" });
+      refreshClient();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const createReport = useMutation({
+    mutationFn: async () => {
+      if (!clientId) throw Error("Selecione o cliente antes de abrir o faturamento.");
+      const [y, m] = period.split("-").map(Number);
+      const { data: existing, error: existingError } = await (
+        supabase.from("waste_reports" as any) as any
+      )
+        .select("id")
+        .eq("client_id", clientId)
+        .eq("period_start", `${period}-01`)
+        .limit(1)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (existing) return { id: existing.id as string, created: false };
+      const { data, error } = await (supabase.from("waste_reports" as any) as any)
+        .insert({
+          client_id: clientId,
+          period_start: `${period}-01`,
+          period_end: new Date(y, m, 0).toISOString().slice(0, 10),
+          status: "published",
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return { id: data.id as string, created: true };
+    },
+    onSuccess: ({ id, created }) => {
+      setReportId(id);
+      void qc.invalidateQueries({ queryKey: ["waste-reports", clientId] });
+      toast.success(
+        created ? "Faturamento aberto para este período." : "Faturamento existente aberto.",
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const addMove = useMutation({
+    mutationFn: async () => {
+      if (!reportId)
+        throw Error("Selecione ou crie um relatório antes de registrar a movimentação.");
+      if (!move.branch) throw Error("Selecione a filial ou pátio da movimentação.");
+      if (!move.placementOrder) throw Error("Selecione a ordem de colocação do equipamento.");
+      const placementOrder = moves.find(
+        (item) => item.id === move.placementOrder && isContainerPlacement(item),
+      );
+      if (!placementOrder || placementOrder.branch_id !== move.branch)
+        throw Error("A ordem selecionada não pertence à filial ou pátio informado.");
+      const exchangeCount = move.hasExchange ? Number(move.exchangeCount) : 0;
+      if (move.hasExchange && (!Number.isFinite(exchangeCount) || exchangeCount <= 0))
+        throw Error("Informe quantos equipamentos foram retirados na troca.");
+      const payload = {
+        report_id: reportId,
+        waste_residue_id: placementOrder.waste_residue_id,
+        branch_id: placementOrder.branch_id,
+        equipment_id: placementOrder.equipment_id,
+        container_placement_id: placementOrder.id,
+        operation_type: "movement",
+        occurred_on: move.date,
+        service_order: move.os || null,
+        placed_quantity: exchangeCount,
+        removed_quantity: exchangeCount,
+        weight_kg: Number(move.weight),
+        mtr_number: move.mtr || null,
+        destination_name: move.destination || null,
+      };
+      const query = supabase.from("waste_movements" as any) as any;
+      const { error } = editingMove
+        ? await query.update(payload).eq("id", editingMove.id)
+        : await query.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setInvoiceBranch(move.branch);
+      toast.success(editingMove ? "Movimentação atualizada." : "Movimentação registrada.");
+      setEditingMove(null);
+      setMove({
+        placementOrder: "",
+        residue: "",
+        branch: "",
+        equipment: "",
+        date: today(),
+        hasExchange: false,
+        exchangeCount: "0",
+        weight: "0",
+        os: "",
+        mtr: "",
+        destination: "",
+      });
+      refreshReport();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const addPlacement = useMutation({
+    mutationFn: async () => {
+      if (!reportId) throw Error("Selecione ou crie um relatório antes de registrar a colocação.");
+      if (!placement.residue) throw Error("Selecione o resíduo.");
+      if (!placement.branch) throw Error("Selecione a filial ou pátio.");
+      if (!placement.equipment) throw Error("Selecione o equipamento.");
+      if (Number(placement.value) <= 0) throw Error("Informe o valor da colocação.");
+      const payload = {
+        report_id: reportId,
+        waste_residue_id: placement.residue,
+        branch_id: placement.branch,
+        equipment_id: placement.equipment,
+        occurred_on: editingPlacement?.occurred_on || today(),
+        operation_type: "container_placement",
+        placement_value: Number(placement.value),
+        service_order: null,
+        placed_quantity: 0,
+        removed_quantity: 0,
+        weight_kg: 0,
+        mtr_number: null,
+        destination_name: null,
+      };
+      const query = supabase.from("waste_movements" as any) as any;
+      const { error } = editingPlacement
+        ? await query.update(payload).eq("id", editingPlacement.id)
+        : await query.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setInvoiceBranch(placement.branch);
+      toast.success(
+        editingPlacement ? "Colocação atualizada." : "Colocação de equipamento registrada.",
+      );
+      setEditingPlacement(null);
+      setPlacement({ residue: "", branch: "", equipment: "", value: "" });
+      refreshReport();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const removeRecord = async (table: string, id: string, refresh: () => void, label: string) => {
+    if (!window.confirm(`Excluir ${label}?`)) return;
+    const { error } = await (supabase.from(table as any) as any).delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success(`${label} excluído.`);
+      refresh();
+    }
+  };
+  const deleteService = async (service: Service) => {
+    if (!window.confirm(`Excluir ${service.name} e seus lançamentos de teste nos demonstrativos?`))
+      return;
+    const { error: reportServiceError } = await (
+      supabase.from("waste_report_services" as any) as any
+    )
+      .delete()
+      .eq("waste_service_id", service.id);
+    if (reportServiceError) {
+      toast.error(reportServiceError.message);
+      return;
+    }
+    const { error } = await (supabase.from("waste_services" as any) as any)
+      .delete()
+      .eq("id", service.id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Serviço excluído.");
+      refreshClient();
+      refreshReport();
+    }
+  };
+  const addTicket = useMutation({
+    mutationFn: async () => {
+      if (!reportId || !ticket.residue) throw Error("Selecione o resíduo.");
+      const eq = equipment.find((e) => e.id === ticket.equipment);
+      const { error } = await (supabase.from("waste_weighing_tickets" as any) as any).insert({
+        report_id: reportId,
+        waste_residue_id: ticket.residue,
+        equipment_id: ticket.equipment || null,
+        ticket_number: ticket.number || null,
+        weighed_on: ticket.date,
+        vehicle_plate: eq?.plate || null,
+        net_weight_kg: ticket.net ? Number(ticket.net) : null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Ticket registrado.");
+      refreshReport();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const operationalMoves = moves.filter((move) => !isContainerPlacement(move));
+  const placements = moves.filter(isContainerPlacement);
+  const rows = useMemo(
+    () =>
+      active
+        .filter(
+          (residue) =>
+            operationalMoves.some((move) => move.waste_residue_id === residue.id) &&
+            !rates.find((r) => r.waste_residue_id === residue.id)?.excluded,
+        )
+        .map((residue) => {
+          const ms = operationalMoves.filter((m) => m.waste_residue_id === residue.id);
+          const rate = rates.find((r) => r.waste_residue_id === residue.id);
+          const placed = ms.reduce(
+              (s, m) => s + Number(m.placed_quantity || 0) - Number(m.removed_quantity || 0),
+              0,
+            ),
+            exchanges = ms.reduce((s, m) => s + Number(m.removed_quantity || 0), 0),
+            weight = ms.reduce((s, m) => s + Number(m.weight_kg || 0), 0);
+          const rental = Number(rate?.rental_rate ?? residue.default_rental_rate),
+            exchange = Number(rate?.exchange_rate ?? residue.default_exchange_rate),
+            treatment = Number(rate?.treatment_rate ?? residue.default_treatment_rate);
+          return {
+            residue,
+            placed,
+            exchanges,
+            weight,
+            rental,
+            exchange,
+            treatment,
+            total: placed * rental + exchanges * exchange + weight * treatment,
+          };
+        }),
+    [active, operationalMoves, rates],
+  );
+  const serviceRows = activeServices
+    .filter(
+      (service) => !reportServices.find((item) => item.waste_service_id === service.id)?.excluded,
+    )
+    .map((service) => ({
+      service,
+      rate: Number(reportServices.find((item) => item.waste_service_id === service.id)?.rate ?? 0),
+    }));
+  const servicesTotal = serviceRows.reduce((sum, item) => sum + item.rate, 0);
+  const placementTotal = placements.reduce(
+    (sum, item) => sum + Number(item.placement_value || 0),
+    0,
+  );
+  const total = rows.reduce((s, r) => s + r.total, 0) + servicesTotal + placementTotal;
+  const totalWeight = rows.reduce((s, r) => s + r.weight, 0);
+  const billingBranchId =
+    invoiceBranch || placements[0]?.branch_id || operationalMoves[0]?.branch_id || "";
+  const selectedBranch = branches.find((branch) => branch.id === billingBranchId);
+  const branchRows = selectedBranch
+    ? rows.map((row) => {
+        const ms = operationalMoves.filter(
+          (m) => m.branch_id === selectedBranch.id && m.waste_residue_id === row.residue.id,
+        );
+        const placed = ms.reduce(
+            (s, m) => s + Number(m.placed_quantity || 0) - Number(m.removed_quantity || 0),
+            0,
+          ),
+          exchanges = ms.reduce((s, m) => s + Number(m.removed_quantity || 0), 0),
+          weight = ms.reduce((s, m) => s + Number(m.weight_kg || 0), 0);
+        return {
+          ...row,
+          placed,
+          exchanges,
+          weight,
+          total: placed * row.rental + exchanges * row.exchange + weight * row.treatment,
+        };
+      })
+    : rows;
+  const invoiceRows = branchRows.filter(
+    (row) => invoiceResidues.includes(row.residue.id) && row.total > 0,
+  );
+  const invoiceServiceRows = serviceRows.filter(
+    (row) => invoiceServices.includes(row.service.id) && row.rate > 0,
+  );
+  const invoicePlacementRows = placements.filter((item) => item.branch_id === billingBranchId);
+  const invoicePlacementTotal = invoicePlacementRows.reduce(
+    (sum, row) => sum + Number(row.placement_value || 0),
+    0,
+  );
+  const invoiceTotal =
+    invoiceRows.reduce((sum, row) => sum + row.total, 0) +
+    invoiceServiceRows.reduce((sum, row) => sum + row.rate, 0) +
+    invoicePlacementTotal;
+  useEffect(() => {
+    setInvoiceBranch("");
+  }, [reportId]);
+  useEffect(() => {
+    if (!invoiceBranch) {
+      const firstBranch = placements[0]?.branch_id || moves.find((m) => m.branch_id)?.branch_id;
+      if (firstBranch) setInvoiceBranch(firstBranch);
+    }
+  }, [moves, placements, invoiceBranch]);
+  useEffect(() => {
+    if (!invoiceResidues.length && rows.length)
+      setInvoiceResidues(rows.map((row) => row.residue.id));
+    if (!invoiceServices.length && serviceRows.length)
+      setInvoiceServices(serviceRows.map((row) => row.service.id));
+  }, [reportId, rows.length, serviceRows.length]);
+  const saveRate = async (
+    r: (typeof rows)[number],
+    field: "rental_rate" | "exchange_rate" | "treatment_rate",
+    value: string,
+  ) => {
+    const existing = rates.find((x) => x.waste_residue_id === r.residue.id);
+    const { error } = await (supabase.from("waste_billing_rates" as any) as any).upsert(
+      {
+        id: existing?.id,
+        report_id: reportId,
+        waste_residue_id: r.residue.id,
+        rental_rate: existing?.rental_rate ?? r.rental,
+        exchange_rate: existing?.exchange_rate ?? r.exchange,
+        treatment_rate: existing?.treatment_rate ?? r.treatment,
+        [field]: Number(value || 0),
+      },
+      { onConflict: "report_id,waste_residue_id" },
+    );
+    if (error) toast.error(error.message);
+    else refreshReport();
+  };
+  const removeFromReport = async (r: (typeof rows)[number]) => {
+    if (
+      !window.confirm(
+        `Remover ${r.residue.name} somente deste relatório? O cadastro do resíduo será mantido.`,
+      )
+    )
+      return;
+    const existing = rates.find((x) => x.waste_residue_id === r.residue.id);
+    const { error } = await (supabase.from("waste_billing_rates" as any) as any).upsert(
+      {
+        id: existing?.id,
+        report_id: reportId,
+        waste_residue_id: r.residue.id,
+        rental_rate: existing?.rental_rate ?? r.rental,
+        exchange_rate: existing?.exchange_rate ?? r.exchange,
+        treatment_rate: existing?.treatment_rate ?? r.treatment,
+        excluded: true,
+      },
+      { onConflict: "report_id,waste_residue_id" },
+    );
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Item removido deste relatório.");
+      refreshReport();
+    }
+  };
+  const pdf = async () => {
+    if (!report) return;
+    if (!selectedBranch) {
+      toast.error("Selecione a filial ou pátio do demonstrativo.");
+      return;
+    }
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+    const client = clients.find((c) => c.id === clientId);
+    const pageWidth = 210;
+    doc.setFillColor(62, 122, 79);
+    doc.rect(0, 0, pageWidth, 50, "F");
+    doc.setFillColor(101, 163, 84);
+    doc.circle(196, 9, 18, "F");
+    doc.setFillColor(138, 190, 92);
+    doc.circle(205, 20, 17, "F");
+    doc.setDrawColor(187, 215, 139);
+    doc.setLineWidth(0.7);
+    doc.line(182, 37, 198, 22);
+    doc.line(191, 31, 185, 25);
+    doc.line(194, 27, 202, 26);
+    doc.setFillColor(250, 253, 249);
+    doc.roundedRect(12, 6, 47, 35, 3, 3, "F");
+    doc.setDrawColor(210, 229, 205);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(12, 6, 47, 35, 3, 3, "S");
+    try {
+      const image = new Image();
+      image.src = jacobyLogo;
+      await image.decode();
+      doc.addImage(image, "PNG", 15, 10, 41, 25);
+    } catch {}
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(17);
+    doc.setFont("helvetica", "bold");
+    doc.text("DEMONSTRATIVO DE FATURAMENTO", 65, 20);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(
+      `Período: ${formatDate(report.period_start)} a ${formatDate(report.period_end)}`,
+      65,
+      28,
+    );
+    doc.text(client?.name || "Cliente", 65, 35);
+    let y = 60;
+    doc.setFillColor(244, 248, 242);
+    doc.roundedRect(14, y, 182, 31, 3, 3, "F");
+    doc.setDrawColor(184, 210, 176);
+    doc.roundedRect(14, y, 182, 31, 3, 3, "S");
+    doc.setTextColor(39, 61, 45);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(selectedBranch.name, 20, y + 9);
+    const branchDetails = [
+      selectedBranch.legal_name,
+      selectedBranch.cnpj && `CNPJ: ${selectedBranch.cnpj}`,
+      selectedBranch.address,
+      selectedBranch.responsible && `Responsável: ${selectedBranch.responsible}`,
+      selectedBranch.phone,
+      selectedBranch.email,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(93, 112, 97);
+    const detailLines = doc.splitTextToSize(
+      branchDetails || "Dados cadastrais não informados.",
+      168,
+    );
+    doc.text(detailLines, 20, y + 16);
+    y += 40;
+    doc.setFillColor(35, 96, 58);
+    doc.roundedRect(14, y, 182, 9, 2, 2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("ITEM", 20, y + 6);
+    doc.text("TIPO", 104, y + 6);
+    doc.text("QUANTIDADE", 139, y + 6);
+    doc.text("VALOR", 190, y + 6, { align: "right" });
+    y += 9;
+    const items = [
+      ...invoiceRows.map((row) => ({
+        name: row.residue.name,
+        type: "Resíduo",
+        quantity: `${n(row.weight)} ${row.residue.unit}`,
+        value: row.total,
+      })),
+      ...invoicePlacementRows.map((item) => ({
+        name: `Colocação · ${equipmentLabel(equipment.find((e) => e.id === item.equipment_id))}`,
+        type: residues.find((r) => r.id === item.waste_residue_id)?.name || "Resíduo",
+        quantity: "Equipamento",
+        value: Number(item.placement_value || 0),
+      })),
+      ...invoiceServiceRows.map((row) => ({
+        name: row.service.name,
+        type: "Serviço",
+        quantity: "Avulso",
+        value: row.rate,
+      })),
+    ];
+    if (!items.length) {
+      doc.setTextColor(93, 112, 97);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text("Nenhum item selecionado.", 20, y + 12);
+      y += 18;
+    } else {
+      items.forEach((item, index) => {
+        if (index % 2 === 0) {
+          doc.setFillColor(247, 250, 246);
+          doc.rect(14, y, 182, 10, "F");
+        }
+        doc.setTextColor(39, 61, 45);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text(item.name, 20, y + 6.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(93, 112, 97);
+        doc.text(item.type, 104, y + 6.5);
+        doc.text(item.quantity, 139, y + 6.5);
+        doc.setTextColor(39, 61, 45);
+        doc.text(money(item.value), 190, y + 6.5, { align: "right" });
+        y += 10;
+      });
+    }
+    y += 8;
+    doc.setFillColor(232, 244, 226);
+    doc.roundedRect(118, y, 78, 18, 3, 3, "F");
+    doc.setTextColor(35, 96, 58);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("TOTAL DO DEMONSTRATIVO", 124, y + 7);
+    doc.setFontSize(14);
+    doc.text(money(invoiceTotal), 190, y + 14, { align: "right" });
+    doc.setDrawColor(153, 190, 125);
+    doc.setLineWidth(0.35);
+    doc.line(14, 274, 196, 274);
+    doc.setFillColor(232, 244, 226);
+    doc.circle(22, 281, 5, "F");
+    doc.setDrawColor(65, 131, 71);
+    doc.setLineWidth(0.5);
+    doc.line(22, 285, 22, 278);
+    doc.line(22, 281, 18, 279);
+    doc.line(22, 281, 26, 278);
+    doc.setTextColor(93, 112, 97);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 31, 283);
+    doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
+    doc.save(
+      `demonstrativo-${selectedBranch.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-${report.period_start}.pdf`,
+    );
+  };
+  const saveServiceRate = async (item: (typeof serviceRows)[number], value: string) => {
+    const existing = reportServices.find((row) => row.waste_service_id === item.service.id);
+    const { error } = await (supabase.from("waste_report_services" as any) as any).upsert(
+      {
+        id: existing?.id,
+        report_id: reportId,
+        waste_service_id: item.service.id,
+        rate: Number(value || 0),
+      },
+      { onConflict: "report_id,waste_service_id" },
+    );
+    if (error) toast.error(error.message);
+    else refreshReport();
+  };
+  const setServiceIncluded = async (service: Service, included: boolean) => {
+    const existing = reportServices.find((row) => row.waste_service_id === service.id);
+    const { error } = await (supabase.from("waste_report_services" as any) as any).upsert(
+      {
+        id: existing?.id,
+        report_id: reportId,
+        waste_service_id: service.id,
+        rate: existing?.rate ?? 0,
+        excluded: !included,
+      },
+      { onConflict: "report_id,waste_service_id" },
+    );
+    if (error) toast.error(error.message);
+    else refreshReport();
+  };
+  const pageTitle =
+    catalogTab === "relatorios"
+      ? "Relatórios de resíduos"
+      : catalogTab === "faturamento"
+        ? "Faturamento"
+        : catalogTab === "configuracoes"
+          ? "Configurações de movimentação"
+          : "Gestão de Resíduos";
+  if (loading || (isClient && !linked))
+    return <div className="p-6 text-sm text-muted-foreground">Carregando o portal do cliente…</div>;
+  // Mantém o faturamento legado intocado: a versão 2 possui componente e tabelas próprios.
+  if (requestedCatalogTab === "faturamento2" && isAdmin) return <BillingV2Module />;
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+      <header className="flex justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-primary">
+            {portal ? "Portal do Cliente" : "Controle ambiental integrado"}
+          </p>
+          <h1 className="text-2xl font-bold">{pageTitle}</h1>
+        </div>
+        {!catalogTab && report && (
+          <Button onClick={() => void pdf()}>
+            <Download className="mr-2 h-4 w-4" />
+            Gerar PDF
+          </Button>
+        )}
+      </header>
+      {catalogTab ? (
+        <Card
+          className={
+            catalogTab === "faturamento" ? "grid gap-3 p-4 md:grid-cols-3" : "max-w-xl p-4"
+          }
+        >
+          <Field label="Cliente">
+            {isClient ? (
+              <p className="mt-2 font-medium">{clients.find((c) => c.id === clientId)?.name}</p>
+            ) : (
+              <Select
+                value={clientId}
+                onValueChange={(v) => {
+                  setClientId(v);
+                  setReportId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </Field>
+          {catalogTab === "faturamento" && isAdmin && (
+            <>
+              <Field label="Período do faturamento">
+                <Input
+                  type="month"
+                  value={period}
+                  onChange={(event) => setPeriod(event.target.value)}
+                />
+              </Field>
+              <Button className="self-end" onClick={() => createReport.mutate()}>
+                <FilePlus2 className="mr-2 h-4 w-4" />
+                {reportId ? "Abrir para editar" : "Abrir faturamento"}
+              </Button>
+            </>
+          )}
+        </Card>
+      ) : (
+        <Card className="grid gap-3 p-4 md:grid-cols-4">
+          <Field label="Cliente">
+            {isClient ? (
+              <p className="mt-2 font-medium">{clients.find((c) => c.id === clientId)?.name}</p>
+            ) : (
+              <Select
+                value={clientId}
+                onValueChange={(v) => {
+                  setClientId(v);
+                  setReportId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </Field>
+          <Field label="Relatório">
+            <Select value={reportId} onValueChange={setReportId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecionar" />
+              </SelectTrigger>
+              <SelectContent>
+                {reports.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.period_start} · {r.status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {isAdmin && (
+            <>
+              <Field label="Novo período">
+                <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+              </Field>
+              <Button className="self-end" onClick={() => createReport.mutate()}>
+                <FilePlus2 className="mr-2 h-4 w-4" />
+                Novo relatório
+              </Button>
+            </>
+          )}
+        </Card>
+      )}
+      {catalogTab === "faturamento" && view === "faturamento" && (
+        <InvoiceConfigurator
+          clientName={clients.find((client) => client.id === clientId)?.name || "Cliente"}
+          branch={selectedBranch}
+          rows={rows}
+          selectedResidues={invoiceResidues}
+          onResidues={setInvoiceResidues}
+          services={serviceRows}
+          selectedServices={invoiceServices}
+          onServices={setInvoiceServices}
+          placements={invoicePlacementRows.map((placementItem) => ({
+            id: placementItem.id,
+            equipment: equipmentLabel(
+              equipment.find((equipmentItem) => equipmentItem.id === placementItem.equipment_id),
+            ),
+            residue:
+              residues.find((residue) => residue.id === placementItem.waste_residue_id)?.name ||
+              "Resíduo",
+            value: Number(placementItem.placement_value || 0),
+          }))}
+          total={invoiceTotal}
+          onEdit={() => setView("movimentos")}
+          onGenerate={() => void pdf()}
+        />
+      )}
+      <Tabs value={view} onValueChange={setView}>
+        {catalogTab === "faturamento" && (
+          <TabsList>
+            <TabsTrigger value="colocacao">Colocação de equipamento</TabsTrigger>
+            <TabsTrigger value="movimentos">Movimentações</TabsTrigger>
+            <TabsTrigger value="faturamento">Demonstrativo de faturamento</TabsTrigger>
+          </TabsList>
+        )}
+        {!catalogTab && (
+          <TabsList className="h-auto w-full justify-start overflow-x-auto">
+            <TabsTrigger value="painel">Relatórios</TabsTrigger>
+            <TabsTrigger value="movimentos">Faturamento · movimentações</TabsTrigger>
+            <TabsTrigger value="faturamento">Faturamento · demonstrativo</TabsTrigger>
+            {isAdmin && <TabsTrigger value="servicos">Cadastro de serviços</TabsTrigger>}
+          </TabsList>
+        )}
+        <TabsContent value="painel" className="space-y-4">
+          <AnnualWasteReport
+            moves={catalogTab === "relatorios" ? allClientMoves : moves}
+            branches={branches}
+            residues={residues}
+            clientName={clients.find((client) => client.id === clientId)?.name || "Cliente"}
+            year={reportYear}
+            month={reportMonth}
+            onYear={setReportYear}
+            onMonth={setReportMonth}
+          />
+        </TabsContent>
+        <TabsContent value="residuos" className="space-y-4">
+          <Card className="p-4">
+            <h2 className="font-semibold">{editingResidue ? "Editar resíduo" : "Novo resíduo"}</h2>
+            <p className="text-sm text-muted-foreground">
+              O demonstrativo puxa estas categorias e os valores cadastrados.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+              {isAdmin && (
+                <Field label="Tipo padrão">
+                  <Select
+                    value={resForm.standardId || "manual"}
+                    onValueChange={(value) => {
+                      if (value === "manual") {
+                        setResForm({ ...resForm, standardId: "" });
+                        return;
+                      }
+                      const standard = standardResidueTypes.find((item) => item.id === value);
+                      if (!standard) return;
+                      setResForm({
+                        ...resForm,
+                        standardId: standard.id,
+                        name: standard.name,
+                        waste_class: standard.waste_class,
+                        unit: standard.unit,
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Digite manualmente ou selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Digitar manualmente</SelectItem>
+                      {standardResidueTypes
+                        .filter((item) => item.active)
+                        .map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+              <Field label="Tipo">
+                <Input
+                  value={resForm.name}
+                  onChange={(e) => setResForm({ ...resForm, name: e.target.value })}
+                />
+              </Field>
+              <Field label="Classe">
+                <Select
+                  value={resForm.waste_class}
+                  onValueChange={(v) => setResForm({ ...resForm, waste_class: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="class_i">Classe I</SelectItem>
+                    <SelectItem value="class_ii">Classe II</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Locação">
+                <Input
+                  type="number"
+                  value={resForm.rental}
+                  onChange={(e) => setResForm({ ...resForm, rental: e.target.value })}
+                />
+              </Field>
+              <Field label="Troca">
+                <Input
+                  type="number"
+                  value={resForm.exchange}
+                  onChange={(e) => setResForm({ ...resForm, exchange: e.target.value })}
+                />
+              </Field>
+              <Field label="Tratamento/kg">
+                <Input
+                  type="number"
+                  value={resForm.treatment}
+                  onChange={(e) => setResForm({ ...resForm, treatment: e.target.value })}
+                />
+              </Field>
+              <div className="flex gap-2 self-end">
+                <Button onClick={() => addResidue.mutate()}>
+                  {editingResidue ? "Salvar" : "Cadastrar"}
+                </Button>
+                {editingResidue && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditingResidue(null);
+                      setResForm({
+                        standardId: "",
+                        name: "",
+                        waste_class: "class_ii",
+                        unit: "kg",
+                        rental: "0",
+                        exchange: "0",
+                        treatment: "0",
+                      });
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+          <ActionTable
+            headers={["Resíduo", "Classe", "Locação", "Troca", "Tratamento", "Ações"]}
+            rows={residues.map((r) => [
+              r.name,
+              r.waste_class === "class_i" ? "Classe I" : "Classe II",
+              money(r.default_rental_rate),
+              money(r.default_exchange_rate),
+              money(r.default_treatment_rate),
+              <div className="flex gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Editar"
+                  onClick={() => {
+                    setEditingResidue(r);
+                    setResForm({
+                      standardId: "",
+                      name: r.name,
+                      waste_class: r.waste_class,
+                      unit: r.unit,
+                      rental: String(r.default_rental_rate),
+                      exchange: String(r.default_exchange_rate),
+                      treatment: String(r.default_treatment_rate),
+                    });
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Excluir"
+                  onClick={() =>
+                    void removeRecord("waste_residues", r.id, refreshClient, "resíduo")
+                  }
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>,
+            ])}
+          />
+        </TabsContent>
+        <TabsContent value="servicos" className="space-y-4">
+          <Card className="p-4">
+            <h2 className="font-semibold">{editingService ? "Editar serviço" : "Novo serviço"}</h2>
+            <p className="text-sm text-muted-foreground">
+              Cadastre somente o nome. O valor será definido no demonstrativo de faturamento de cada
+              relatório.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <Field label="Nome do serviço">
+                <Input
+                  value={serviceForm.name}
+                  onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                />
+              </Field>
+              <div className="flex gap-2 self-end">
+                <Button onClick={() => addService.mutate()}>
+                  {editingService ? "Salvar" : "Cadastrar"}
+                </Button>
+                {editingService && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditingService(null);
+                      setServiceForm({ name: "" });
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+          <ActionTable
+            headers={["Serviço", "Ações"]}
+            rows={services.map((s) => [
+              s.name,
+              <div className="flex gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Editar"
+                  onClick={() => {
+                    setEditingService(s);
+                    setServiceForm({ name: s.name });
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Excluir"
+                  onClick={() => void deleteService(s)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>,
+            ])}
+          />
+        </TabsContent>
+        <TabsContent value="equipamentos" className="space-y-4">
+          <Tabs defaultValue="equipamentos" className="space-y-4">
+            <TabsList className="h-auto rounded-none bg-transparent p-0">
+              <TabsTrigger
+                value="equipamentos"
+                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
+              >
+                Cadastro de equipamentos
+              </TabsTrigger>
+              <TabsTrigger
+                value="servicos"
+                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
+              >
+                Cadastro de serviços
+              </TabsTrigger>
+              <TabsTrigger
+                value="valores"
+                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
+              >
+                Troca e tratamento
+              </TabsTrigger>
+              <TabsTrigger
+                value="locacao"
+                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
+              >
+                Valores de locação
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="equipamentos" className="space-y-4">
+              <Card className="p-4">
+                <h2 className="font-semibold">
+                  {editingEquipment ? "Editar equipamento" : "Novo equipamento"}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Selecione uma sugestão já cadastrada ou digite uma nova opção. Ao salvar, ela
+                  ficará disponível para os próximos cadastros.
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <Field label="Identificação">
+                    <Input
+                      placeholder="Ex.: CAÇ-001"
+                      value={eqForm.identification}
+                      onChange={(event) =>
+                        setEqForm({ ...eqForm, identification: event.target.value })
+                      }
+                    />
+                  </Field>
+                  <Field label="Veículo/Modelo">
+                    <CreatableOptionInput
+                      options={vehicleModelOptions}
+                      placeholder="Selecione ou digite um modelo"
+                      value={eqForm.name}
+                      onChange={(value) => setEqForm({ ...eqForm, name: value })}
+                    />
+                  </Field>
+                  <Field label="Recipiente">
+                    <CreatableOptionInput
+                      options={recipientOptions}
+                      placeholder="Selecione ou digite um recipiente"
+                      value={eqForm.type}
+                      onChange={(value) => setEqForm({ ...eqForm, type: value })}
+                    />
+                  </Field>
+                  <Field label="Capacidade">
+                    <div className="grid grid-cols-[1fr_150px] gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Quantidade"
+                        value={eqForm.capacity}
+                        onChange={(e) => setEqForm({ ...eqForm, capacity: e.target.value })}
+                      />
+                      <Select
+                        value={eqForm.capacityUnit}
+                        onValueChange={(value) => setEqForm({ ...eqForm, capacityUnit: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="m3">Metro cúbico (m³)</SelectItem>
+                          <SelectItem value="tonelada">Toneladas</SelectItem>
+                          <SelectItem value="litros">Litros</SelectItem>
+                          <SelectItem value="kg">KG</SelectItem>
+                          <SelectItem value="granel">Granel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </Field>
+                  <div className="flex gap-2 self-end">
+                    <Button onClick={() => addEquipment.mutate()}>
+                      {editingEquipment ? "Salvar" : "Cadastrar"}
+                    </Button>
+                    {editingEquipment && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingEquipment(null);
+                          setEqForm({
+                            identification: "",
+                            name: "",
+                            type: "",
+                          capacity: "",
+                          capacityUnit: "m3",
+                          });
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+              <ActionTable
+                headers={["Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
+                rows={equipment.map((e) => [
+                  e.identification || "—",
+                  e.name,
+                  e.equipment_type,
+                  e.capacity_value !== null
+                    ? `${n(e.capacity_value)} ${capacityUnitLabel(e.capacity_unit)}`
+                    : e.capacity_m3 !== null
+                      ? `${n(e.capacity_m3)} m³`
+                      : "—",
+                  <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Editar"
+                      onClick={() => {
+                        setEditingEquipment(e);
+                        setEqForm({
+                          identification: e.identification || "",
+                          name: e.name,
+                          type: e.equipment_type,
+                          capacity:
+                            e.capacity_value !== null
+                              ? String(e.capacity_value)
+                              : e.capacity_m3 === null
+                                ? ""
+                                : String(e.capacity_m3),
+                          capacityUnit: e.capacity_value !== null ? e.capacity_unit : "m3",
+                        });
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Excluir"
+                      onClick={() =>
+                        void removeRecord("waste_equipment", e.id, refreshClient, "equipamento")
+                      }
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>,
+                ])}
+              />
+            </TabsContent>
+            <TabsContent value="servicos" className="space-y-4">
+              <Card className="p-4">
+                <h2 className="font-semibold">
+                  {editingService ? "Editar serviço" : "Novo serviço"}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Cadastre somente o nome. O valor será definido no faturamento de cada cliente.
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  <Field label="Nome do serviço">
+                    <Input
+                      value={serviceForm.name}
+                      onChange={(event) =>
+                        setServiceForm({ ...serviceForm, name: event.target.value })
+                      }
+                    />
+                  </Field>
+                  <div className="flex gap-2 self-end">
+                    <Button onClick={() => addService.mutate()}>
+                      {editingService ? "Salvar" : "Cadastrar"}
+                    </Button>
+                    {editingService && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingService(null);
+                          setServiceForm({ name: "" });
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+              <ActionTable
+                headers={["Serviço", "Ações"]}
+                rows={services.map((service) => [
+                  service.name,
+                  <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Editar"
+                      onClick={() => {
+                        setEditingService(service);
+                        setServiceForm({ name: service.name });
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Excluir"
+                      onClick={() => void deleteService(service)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>,
+                ])}
+              />
+            </TabsContent>
+            <TabsContent value="valores" className="space-y-4">
+              <ClientMovementPrices clientId={clientId} />
+            </TabsContent>
+            <TabsContent value="locacao" className="space-y-4">
+              <ClientMovementPrices clientId={clientId} mode="rental" />
+            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="configuracoes" className="space-y-4">
+                <Card className="p-4">
+                  <h2 className="font-semibold">
+                    {editingStandardResidue ? "Editar tipo padrão" : "Novo tipo padrão de resíduo"}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Esta lista é padrão do sistema. Ao cadastrar um resíduo para um cliente, basta
+                    selecioná-lo e definir os valores específicos daquele cliente.
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-4">
+                    <Field label="Nome do tipo">
+                      <Input
+                        value={standardResidueForm.name}
+                        onChange={(event) =>
+                          setStandardResidueForm({
+                            ...standardResidueForm,
+                            name: event.target.value,
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Classe">
+                      <Select
+                        value={standardResidueForm.waste_class}
+                        onValueChange={(value) =>
+                          setStandardResidueForm({ ...standardResidueForm, waste_class: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="class_i">Classe I</SelectItem>
+                          <SelectItem value="class_ii">Classe II</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Unidade padrão">
+                      <Select
+                        value={standardResidueForm.unit}
+                        onValueChange={(value) =>
+                          setStandardResidueForm({ ...standardResidueForm, unit: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">KG</SelectItem>
+                          <SelectItem value="litros">Litros</SelectItem>
+                          <SelectItem value="unidade">Unidade</SelectItem>
+                          <SelectItem value="tonelada">Tonelada</SelectItem>
+                          <SelectItem value="m3">Metro cúbico</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <div className="flex gap-2 self-end">
+                      <Button onClick={() => saveStandardResidueType.mutate()}>
+                        {editingStandardResidue ? "Salvar" : "Cadastrar"}
+                      </Button>
+                      {editingStandardResidue && (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setEditingStandardResidue(null);
+                            setStandardResidueForm({
+                              name: "",
+                              waste_class: "class_ii",
+                              unit: "kg",
+                            });
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+                <ActionTable
+                  headers={["Tipo padrão", "Classe", "Unidade", "Ações"]}
+                  rows={standardResidueTypes.map((item) => [
+                    item.name,
+                    item.waste_class === "class_i" ? "Classe I" : "Classe II",
+                    item.unit === "m3" ? "Metro cúbico" : item.unit,
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Editar"
+                        onClick={() => {
+                          setEditingStandardResidue(item);
+                          setStandardResidueForm({
+                            name: item.name,
+                            waste_class: item.waste_class,
+                            unit: item.unit,
+                          });
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Excluir"
+                        onClick={() =>
+                          void removeRecord(
+                            "waste_residue_types",
+                            item.id,
+                            refreshStandardResidueTypes,
+                            "tipo padrão",
+                          )
+                        }
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>,
+                  ])}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
+        </TabsContent>
+        <TabsContent value="movimentos" className="space-y-4">
+          {isAdmin && (
+            <Card className="p-4">
+              <h2 className="font-semibold">
+                {editingMove ? "Editar movimentação" : "Nova movimentação"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Escolha a filial e a ordem de colocação. O equipamento e o resíduo serão puxados da
+                ordem.
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+                <Field label="Filial ou pátio">
+                  <Select
+                    value={move.branch}
+                    onValueChange={(v) => {
+                      setMove((current) => ({
+                        ...current,
+                        branch: v,
+                        placementOrder: "",
+                        residue: "",
+                        equipment: "",
+                      }));
+                      setInvoiceBranch(v);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar unidade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches
+                        .filter((b) => b.is_active)
+                        .map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Ordem de colocação">
+                  <Select
+                    value={move.placementOrder}
+                    disabled={!move.branch}
+                    onValueChange={(value) => {
+                      const order = placements.find((item) => item.id === value);
+                      setMove((current) => ({
+                        ...current,
+                        placementOrder: value,
+                        residue: order?.waste_residue_id || "",
+                        equipment: order?.equipment_id || "",
+                      }));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          move.branch ? "Selecionar ordem" : "Selecione a filial primeiro"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {placements
+                        .filter((item) => item.branch_id === move.branch)
+                        .map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            Ordem #{item.id.slice(-6).toUpperCase()} ·{" "}
+                            {equipmentLabel(equipment.find((e) => e.id === item.equipment_id))}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Equipamento da ordem">
+                  <Input
+                    readOnly
+                    value={equipmentLabel(equipment.find((item) => item.id === move.equipment))}
+                    placeholder="Selecionada pela ordem"
+                  />
+                </Field>
+                <Field label="Resíduo da ordem">
+                  <Input
+                    readOnly
+                    value={residues.find((item) => item.id === move.residue)?.name || ""}
+                    placeholder="Selecionado pela ordem"
+                  />
+                </Field>
+                <Field label="Data">
+                  <Input
+                    type="date"
+                    value={move.date}
+                    onChange={(e) => setMove({ ...move, date: e.target.value })}
+                  />
+                </Field>
+                <Field label="Peso kg">
+                  <Input
+                    type="number"
+                    value={move.weight}
+                    onChange={(e) => setMove({ ...move, weight: e.target.value })}
+                  />
+                </Field>
+                <div className="flex items-end pb-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                    <Checkbox
+                      checked={move.hasExchange}
+                      onCheckedChange={(checked) =>
+                        setMove((current) => ({
+                          ...current,
+                          hasExchange: checked === true,
+                          exchangeCount: checked === true ? current.exchangeCount || "1" : "0",
+                        }))
+                      }
+                    />
+                    Houve troca de equipamento?
+                  </label>
+                </div>
+                {move.hasExchange && (
+                  <Field label="Equipamentos retirados na troca">
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={move.exchangeCount}
+                      onChange={(event) =>
+                        setMove((current) => ({ ...current, exchangeCount: event.target.value }))
+                      }
+                    />
+                  </Field>
+                )}
+                <Field label="MTR">
+                  <Input
+                    value={move.mtr}
+                    onChange={(e) => setMove({ ...move, mtr: e.target.value })}
+                  />
+                </Field>
+                <Field label="Destinação">
+                  <Input
+                    value={move.destination}
+                    onChange={(e) => setMove({ ...move, destination: e.target.value })}
+                  />
+                </Field>
+                <div className="flex gap-2 self-end">
+                  <Button onClick={() => addMove.mutate()}>
+                    {editingMove ? "Salvar" : "Registrar"}
+                  </Button>
+                  {editingMove && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingMove(null);
+                        setMove({
+                          placementOrder: "",
+                          residue: "",
+                          branch: "",
+                          equipment: "",
+                          date: today(),
+                          hasExchange: false,
+                          exchangeCount: "0",
+                          weight: "0",
+                          os: "",
+                          mtr: "",
+                          destination: "",
+                        });
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+          <ActionTable
+            headers={["Data", "Filial", "Ordem", "Equipamento", "Resíduo", "Peso", "MTR", "Ações"]}
+            rows={operationalMoves.map((m) => [
+              formatDate(m.occurred_on),
+              branches.find((b) => b.id === m.branch_id)?.name || "—",
+              m.container_placement_id
+                ? `#${m.container_placement_id.slice(-6).toUpperCase()}`
+                : "—",
+              equipmentLabel(equipment.find((e) => e.id === m.equipment_id)),
+              residues.find((r) => r.id === m.waste_residue_id)?.name || "—",
+              `${n(m.weight_kg)} kg`,
+              m.mtr_number || "—",
+              isAdmin ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Editar"
+                    onClick={() => {
+                      setEditingMove(m);
+                      setInvoiceBranch(m.branch_id || "");
+                      setMove({
+                        placementOrder: m.container_placement_id || "",
+                        residue: m.waste_residue_id || "",
+                        branch: m.branch_id || "",
+                        equipment: m.equipment_id || "",
+                        date: m.occurred_on,
+                        hasExchange: Number(m.removed_quantity || 0) > 0,
+                        exchangeCount: String(m.removed_quantity || 0),
+                        weight: String(m.weight_kg || 0),
+                        os: m.service_order || "",
+                        mtr: m.mtr_number || "",
+                        destination: m.destination_name || "",
+                      });
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Excluir"
+                    onClick={() =>
+                      void removeRecord("waste_movements", m.id, refreshReport, "movimentação")
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ) : (
+                "—"
+              ),
+            ])}
+          />
+        </TabsContent>
+        <TabsContent value="colocacao" className="space-y-4">
+          {isAdmin && (
+            <Card className="p-4">
+              <h2 className="font-semibold">
+                {editingPlacement
+                  ? "Editar colocação de equipamento"
+                  : "Nova colocação de equipamento"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Cada colocação é um lançamento individual e segue como item próprio para o
+                demonstrativo.
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <Field label="Filial ou pátio">
+                  <Select
+                    value={placement.branch}
+                    onValueChange={(value) => {
+                      setPlacement((current) => ({ ...current, branch: value }));
+                      setInvoiceBranch(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar unidade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches
+                        .filter((branch) => branch.is_active)
+                        .map((branch) => (
+                          <SelectItem key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Equipamento">
+                  <Select
+                    value={placement.equipment}
+                    onValueChange={(value) =>
+                      setPlacement((current) => ({ ...current, equipment: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar equipamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeEq.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {equipmentLabel(item)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Resíduo">
+                  <ResidueSelect
+                    residues={active}
+                    value={placement.residue}
+                    onChange={(value) =>
+                      setPlacement((current) => ({ ...current, residue: value }))
+                    }
+                  />
+                </Field>
+                <Field label="Valor da locação">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={placement.value}
+                    onChange={(event) =>
+                      setPlacement((current) => ({ ...current, value: event.target.value }))
+                    }
+                  />
+                </Field>
+                <div className="flex gap-2 self-end">
+                  <Button onClick={() => addPlacement.mutate()}>
+                    {editingPlacement ? "Salvar" : "Registrar colocação"}
+                  </Button>
+                  {editingPlacement && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingPlacement(null);
+                        setPlacement({ residue: "", branch: "", equipment: "", value: "" });
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+          <ActionTable
+            headers={[
+              "Ordem",
+              "Filial ou pátio",
+              "Equipamento",
+              "Resíduo",
+              "Valor da locação",
+              "Ações",
+            ]}
+            rows={placements.map((item) => [
+              `#${item.id.slice(-6).toUpperCase()}`,
+              branches.find((branch) => branch.id === item.branch_id)?.name || "—",
+              equipmentLabel(
+                equipment.find((equipmentItem) => equipmentItem.id === item.equipment_id),
+              ),
+              residues.find((residue) => residue.id === item.waste_residue_id)?.name || "—",
+              money(Number(item.placement_value || 0)),
+              isAdmin ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Editar"
+                    onClick={() => {
+                      setEditingPlacement(item);
+                      setInvoiceBranch(item.branch_id || "");
+                      setPlacement({
+                        branch: item.branch_id || "",
+                        equipment: item.equipment_id || "",
+                        residue: item.waste_residue_id || "",
+                        value: String(item.placement_value || 0),
+                      });
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Excluir"
+                    onClick={() =>
+                      void removeRecord("waste_movements", item.id, refreshReport, "colocação")
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ) : (
+                "—"
+              ),
+            ])}
+          />
+        </TabsContent>
+        <TabsContent value="faturamento">
+          <Tabs defaultValue="locacao">
+            <TabsList>
+              <TabsTrigger value="locacao">Valor da locação</TabsTrigger>
+              <TabsTrigger value="troca">Cobrança por troca</TabsTrigger>
+              <TabsTrigger value="tratamento">Tratamento</TabsTrigger>
+              <TabsTrigger value="servicos">Serviços</TabsTrigger>
+              <TabsTrigger value="total">Total</TabsTrigger>
+            </TabsList>
+            {[
+              ["locacao", "rental_rate", "Locação"] as const,
+              ["troca", "exchange_rate", "Valor por troca (uma por outra)"] as const,
+              ["tratamento", "treatment_rate", "Tratamento/kg"] as const,
+            ].map(([tab, field, label]) => (
+              <TabsContent key={tab} value={tab}>
+                <BillingTable
+                  rows={rows}
+                  label={label}
+                  field={field}
+                  admin={isAdmin}
+                  save={saveRate}
+                  remove={removeFromReport}
+                />
+              </TabsContent>
+            ))}
+            <TabsContent value="servicos">
+              <ServiceReportTable
+                services={activeServices}
+                reportServices={reportServices}
+                admin={isAdmin}
+                onToggle={setServiceIncluded}
+                onRate={saveServiceRate}
+              />
+            </TabsContent>
+            <TabsContent value="total">
+              <SimpleTable
+                headers={["Resíduo", "Locação", "Troca", "Tratamento", "Total"]}
+                rows={rows.map((r) => [
+                  r.residue.name,
+                  money(r.placed * r.rental),
+                  money(r.exchanges * r.exchange),
+                  money(r.weight * r.treatment),
+                  money(r.total),
+                ])}
+              />
+              {serviceRows.length > 0 && (
+                <SimpleTable
+                  headers={["Serviço", "Valor"]}
+                  rows={serviceRows.map((item) => [item.service.name, money(item.rate)])}
+                />
+              )}
+              {placements.length > 0 && (
+                <SimpleTable
+                  headers={["Filial ou pátio", "Equipamento", "Resíduo", "Valor"]}
+                  rows={placements.map((item) => [
+                    branches.find((branch) => branch.id === item.branch_id)?.name || "—",
+                    equipmentLabel(
+                      equipment.find((equipmentItem) => equipmentItem.id === item.equipment_id),
+                    ),
+                    residues.find((residue) => residue.id === item.waste_residue_id)?.name || "—",
+                    money(Number(item.placement_value || 0)),
+                  ])}
+                />
+              )}
+              <Card className="p-4 text-right font-bold">Total geral: {money(total)}</Card>
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
+        <TabsContent value="tickets" className="space-y-4">
+          {isAdmin && (
+            <Card className="p-4">
+              <h2 className="font-semibold">Novo ticket</h2>
+              <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+                <Field label="Resíduo">
+                  <ResidueSelect
+                    residues={active}
+                    value={ticket.residue}
+                    onChange={(v) => setTicket({ ...ticket, residue: v })}
+                  />
+                </Field>
+                <Field label="Equipamento">
+                  <Select
+                    value={ticket.equipment}
+                    onValueChange={(v) => setTicket({ ...ticket, equipment: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeEq.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name}
+                          {e.plate ? ` · ${e.plate}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Data">
+                  <Input
+                    type="date"
+                    value={ticket.date}
+                    onChange={(e) => setTicket({ ...ticket, date: e.target.value })}
+                  />
+                </Field>
+                <Field label="Peso líquido">
+                  <Input
+                    type="number"
+                    value={ticket.net}
+                    onChange={(e) => setTicket({ ...ticket, net: e.target.value })}
+                  />
+                </Field>
+                <Button className="self-end" onClick={() => addTicket.mutate()}>
+                  Registrar
+                </Button>
+              </div>
+            </Card>
+          )}
+          <SimpleTable
+            headers={["Data", "Resíduo", "Equipamento", "Placa", "Peso"]}
+            rows={tickets.map((t) => [
+              t.weighed_on || "—",
+              residues.find((r) => r.id === t.waste_residue_id)?.name || "—",
+              equipment.find((e) => e.id === t.equipment_id)?.name || "—",
+              t.vehicle_plate || "—",
+              `${n(Number(t.net_weight_kg || 0))} kg`,
+            ])}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+function Metric({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
+  return (
+    <Card className="p-4">
+      <div className="flex justify-between text-muted-foreground">
+        <span>{title}</span>
+        {icon}
+      </div>
+      <strong className="mt-2 block text-xl">{value}</strong>
+    </Card>
+  );
+}
+function AnnualWasteReport({
+  moves,
+  branches,
+  residues,
+  clientName,
+  year,
+  month,
+  onYear,
+  onMonth,
+}: {
+  moves: Movement[];
+  branches: Branch[];
+  residues: Residue[];
+  clientName: string;
+  year: string;
+  month: string;
+  onYear: (value: string) => void;
+  onMonth: (value: string) => void;
+}) {
+  const reportRef = useRef<HTMLDivElement>(null);
+  const reportMoves = moves.filter((move) => !isContainerPlacement(move));
+  const years = Array.from(new Set(reportMoves.map((move) => move.occurred_on.slice(0, 4)))).sort(
+    (a, b) => b.localeCompare(a),
+  );
+  const filtered = reportMoves.filter(
+    (move) =>
+      move.occurred_on.slice(0, 4) === year &&
+      (month === "todos" || move.occurred_on.slice(5, 7) === month),
+  );
+  const periodLabel =
+    month === "todos"
+      ? `Ano de ${year}`
+      : `${new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(Number(year), Number(month) - 1, 1))} de ${year}`;
+  const residueData = residues
+    .map((residue) => ({
+      name: residue.name,
+      kg: filtered
+        .filter((move) => move.waste_residue_id === residue.id)
+        .reduce((sum, move) => sum + Number(move.weight_kg || 0), 0),
+    }))
+    .filter((item) => item.kg > 0)
+    .sort((a, b) => b.kg - a.kg);
+  const months =
+    month === "todos"
+      ? Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"))
+      : [month];
+  const monthlyData = months.map((value) => ({
+    name: new Intl.DateTimeFormat("pt-BR", { month: "short" })
+      .format(new Date(Number(year), Number(value) - 1, 1))
+      .replace(".", ""),
+    kg: filtered
+      .filter((move) => move.occurred_on.slice(5, 7) === value)
+      .reduce((sum, move) => sum + Number(move.weight_kg || 0), 0),
+  }));
+  const days = Array.from(new Set(filtered.map((move) => move.occurred_on)))
+    .sort((a, b) => b.localeCompare(a))
+    .map((date) => {
+      const movements = filtered.filter((move) => move.occurred_on === date);
+      const units = Array.from(new Set(movements.map((move) => move.branch_id || "matriz"))).map(
+        (branchId) => {
+          const unitMoves = movements.filter((move) => (move.branch_id || "matriz") === branchId);
+          return {
+            name:
+              branchId === "matriz"
+                ? "Matriz"
+                : branches.find((branch) => branch.id === branchId)?.name || "Filial",
+            weight: unitMoves.reduce((sum, move) => sum + Number(move.weight_kg || 0), 0),
+          };
+        },
+      );
+      return { date, units, total: units.reduce((sum, unit) => sum + unit.weight, 0) };
+    });
+  const exportPdf = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+    doc.setFillColor(62, 122, 79);
+    doc.rect(0, 0, 210, 42, "F");
+    doc.setFillColor(138, 190, 92);
+    doc.circle(198, 12, 17, "F");
+    try {
+      const image = new Image();
+      image.src = jacobyLogo;
+      await image.decode();
+      doc.addImage(image, "PNG", 14, 7, 42, 25);
+    } catch {}
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("RELATÓRIO DE GESTÃO DE RESÍDUOS", 64, 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(clientName, 64, 26);
+    doc.text(periodLabel, 64, 33);
+    let y = 54;
+    doc.setTextColor(39, 61, 45);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Resíduos mais movimentados", 14, y);
+    doc.setFont("helvetica", "normal");
+    const topResidues = residueData.slice(0, 6);
+    const maxResidue = Math.max(...topResidues.map((item) => item.kg), 1);
+    topResidues.forEach((item) => {
+      y += 10;
+      doc.setTextColor(39, 61, 45);
+      doc.setFontSize(9);
+      doc.text(item.name, 14, y);
+      doc.setFillColor(229, 240, 225);
+      doc.roundedRect(70, y - 5, 92, 5, 2, 2, "F");
+      doc.setFillColor(55, 122, 74);
+      doc.roundedRect(70, y - 5, (92 * item.kg) / maxResidue, 5, 2, 2, "F");
+      doc.setTextColor(39, 61, 45);
+      doc.text(`${n(item.kg)} kg`, 196, y, { align: "right" });
+    });
+    if (!topResidues.length) {
+      doc.setTextColor(93, 112, 97);
+      doc.text("Nenhum resíduo movimentado no período.", 14, y + 10);
+      y += 10;
+    }
+    y += 18;
+    doc.setTextColor(39, 61, 45);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Evolução mensal", 14, y);
+    doc.setFont("helvetica", "normal");
+    const maxMonth = Math.max(...monthlyData.map((item) => item.kg), 1);
+    const barWidth = monthlyData.length === 1 ? 36 : 11;
+    monthlyData.forEach((item, index) => {
+      const x = 18 + index * 14;
+      const height = (48 * item.kg) / maxMonth;
+      doc.setFillColor(127, 176, 105);
+      doc.roundedRect(x, y + 54 - height, barWidth, height, 2, 2, "F");
+      doc.setTextColor(93, 112, 97);
+      doc.setFontSize(7);
+      doc.text(item.name, x + barWidth / 2, y + 61, { align: "center" });
+      if (item.kg > 0) {
+        doc.setTextColor(39, 61, 45);
+        doc.text(n(item.kg), x + barWidth / 2, y + 51 - height, { align: "center" });
+      }
+    });
+    y += 75;
+    doc.setFillColor(244, 248, 242);
+    doc.roundedRect(14, y, 182, 27, 3, 3, "F");
+    doc.setTextColor(39, 61, 45);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Resumo do período", 20, y + 9);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const totalKg = filtered.reduce((sum, move) => sum + Number(move.weight_kg || 0), 0);
+    doc.text(
+      `Peso movimentado: ${n(totalKg)} kg · Resíduos registrados: ${residueData.length} · Lançamentos: ${filtered.length}`,
+      20,
+      y + 18,
+    );
+    doc.setDrawColor(153, 190, 125);
+    doc.line(14, 274, 196, 274);
+    doc.setTextColor(93, 112, 97);
+    doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 14, 283);
+    doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
+    appendDetailedMovements(doc, filtered, branches, residues, clientName, periodLabel);
+    doc.save(`relatorio-residuos-${year}${month === "todos" ? "" : `-${month}`}.pdf`);
+  };
+  return (
+    <>
+      <Card className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_auto]">
+        <Field label="Ano">
+          <Select value={year} onValueChange={onYear}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(years.length ? years : [String(new Date().getFullYear())]).map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Mês">
+          <Select value={month} onValueChange={onMonth}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os meses</SelectItem>
+              {Array.from({ length: 12 }, (_, index) => {
+                const value = String(index + 1).padStart(2, "0");
+                return (
+                  <SelectItem key={value} value={value}>
+                    {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(
+                      new Date(2026, index, 1),
+                    )}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Button className="self-end" onClick={() => void exportPdf()}>
+          <Download className="mr-2 h-4 w-4" />
+          Exportar PDF
+        </Button>
+      </Card>
+      <div ref={reportRef} className="space-y-4 bg-background p-1">
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <p className="text-sm text-primary">Relatório de gestão de resíduos</p>
+          <h2 className="text-xl font-bold">{clientName}</h2>
+          <p className="text-sm text-muted-foreground">{periodLabel}</p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="p-4">
+            <h2 className="font-semibold">Resíduos mais movimentados</h2>
+            <p className="mb-3 text-sm text-muted-foreground">Peso total por tipo de resíduo.</p>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={residueData}>
+                  <XAxis dataKey="name" interval={0} angle={-18} textAnchor="end" height={60} />
+                  <YAxis />
+                  <Tooltip formatter={(value: number) => `${n(Number(value))} kg`} />
+                  <Bar dataKey="kg" fill="hsl(var(--primary))" radius={[5, 5, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <h2 className="font-semibold">Evolução mensal</h2>
+            <p className="mb-3 text-sm text-muted-foreground">Kg movimentados mês a mês.</p>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyData}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip formatter={(value: number) => `${n(Number(value))} kg`} />
+                  <Bar dataKey="kg" fill="#7fb069" radius={[5, 5, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+        <Card className="p-4">
+          <h2 className="font-semibold">Resumo dos resíduos</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {residueData.map((item) => (
+              <div key={item.name} className="rounded-md bg-muted/50 p-3">
+                <strong className="block">{item.name}</strong>
+                <span className="text-sm text-primary">{n(item.kg)} kg</span>
+              </div>
+            ))}
+            {!residueData.length && (
+              <p className="text-sm text-muted-foreground">
+                Nenhum resíduo movimentado no período.
+              </p>
+            )}
+          </div>
+        </Card>
+      </div>
+      <div className="space-y-3">
+        {days.map((day) => (
+          <Card key={day.date} className="p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-3">
+              <h2 className="font-semibold">{formatDate(day.date)}</h2>
+              <span className="text-sm text-muted-foreground">Movimentações do dia</span>
+            </div>
+            <div className="space-y-2 py-3">
+              {day.units.map((unit) => (
+                <div key={unit.name} className="flex items-center justify-between text-sm">
+                  <span>{unit.name}</span>
+                  <strong>{n(unit.weight)} kg</strong>
+                </div>
+              ))}
+            </div>
+            <div className="border-t pt-3 text-right">
+              <span className="mr-2 text-sm text-muted-foreground">Total do dia</span>
+              <strong className="text-primary">{n(day.total)} kg</strong>
+            </div>
+          </Card>
+        ))}
+        {!days.length && (
+          <Card className="p-8 text-center text-muted-foreground">
+            Nenhuma movimentação encontrada no período selecionado.
+          </Card>
+        )}
+      </div>
+    </>
+  );
+}
+function appendDetailedMovements(
+  doc: any,
+  moves: Movement[],
+  branches: Branch[],
+  residues: Residue[],
+  clientName: string,
+  periodLabel: string,
+) {
+  doc.addPage();
+  doc.setFillColor(62, 122, 79);
+  doc.rect(0, 0, 210, 28, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("MOVIMENTAÇÕES POR FILIAL", 14, 13);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`${clientName} · ${periodLabel}`, 14, 20);
+  let y = 40;
+  doc.setFillColor(232, 244, 226);
+  doc.roundedRect(14, y, 182, 8, 2, 2, "F");
+  doc.setTextColor(39, 61, 45);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("DATA", 18, y + 5);
+  doc.text("FILIAL / PÁTIO", 48, y + 5);
+  doc.text("RESÍDUO", 107, y + 5);
+  doc.text("KG", 192, y + 5, { align: "right" });
+  y += 14;
+  moves
+    .slice()
+    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on))
+    .forEach((move, index) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      if (index % 2 === 0) {
+        doc.setFillColor(247, 250, 246);
+        doc.rect(14, y - 5, 182, 8, "F");
+      }
+      doc.setTextColor(39, 61, 45);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(formatDate(move.occurred_on), 18, y);
+      doc.text(
+        move.branch_id
+          ? branches.find((branch) => branch.id === move.branch_id)?.name || "Filial"
+          : "Matriz",
+        48,
+        y,
+      );
+      doc.text(
+        residues.find((residue) => residue.id === move.waste_residue_id)?.name || "—",
+        107,
+        y,
+      );
+      doc.text(`${n(move.weight_kg)} kg`, 192, y, { align: "right" });
+      y += 8;
+    });
+  if (!moves.length) {
+    doc.setTextColor(93, 112, 97);
+    doc.text("Nenhuma movimentação encontrada no período.", 14, y);
+  }
+  doc.setTextColor(93, 112, 97);
+  doc.setFontSize(8);
+  doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 14, 286);
+}
+function InvoiceConfigurator({
+  clientName,
+  branch,
+  rows,
+  selectedResidues,
+  onResidues,
+  services,
+  selectedServices,
+  onServices,
+  placements,
+  total,
+  onEdit,
+  onGenerate,
+}: {
+  clientName: string;
+  branch: Branch | undefined;
+  rows: any[];
+  selectedResidues: string[];
+  onResidues: (value: string[]) => void;
+  services: any[];
+  selectedServices: string[];
+  onServices: (value: string[]) => void;
+  placements: { id: string; equipment: string; residue: string; value: number }[];
+  total: number;
+  onEdit: () => void;
+  onGenerate: () => void;
+}) {
+  const toggle = (items: string[], set: (value: string[]) => void, id: string) =>
+    set(items.includes(id) ? items.filter((value) => value !== id) : [...items, id]);
+  return (
+    <Card className="space-y-4 border-primary/20 p-4">
+      <div>
+        <h2 className="font-semibold">Personalizar demonstrativo</h2>
+        <p className="text-sm text-muted-foreground">
+          A filial é definida pelo primeiro lançamento da fila (colocação ou movimentação). Para
+          emitir outro pátio, volte à etapa anterior e selecione a unidade correta.
+        </p>
+      </div>
+      <div className="rounded-md border bg-muted/40 p-3 text-sm">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <span className="text-muted-foreground">Cliente: </span>
+            <strong>{clientName}</strong>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Filial ou pátio: </span>
+            <strong>{branch?.name || "Nenhum lançamento com filial registrado"}</strong>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <strong>Colocações de equipamento desta filial</strong>
+          <strong>{money(placements.reduce((sum, item) => sum + item.value, 0))}</strong>
+        </div>
+        {placements.map((item) => (
+          <div
+            key={item.id}
+            className="flex justify-between gap-3 border-t py-2 first:border-t-0 first:pt-0"
+          >
+            <span>
+              {item.equipment} · {item.residue}
+            </span>
+            <span>{money(item.value)}</span>
+          </div>
+        ))}
+        {!placements.length && (
+          <span className="text-muted-foreground">
+            Nenhuma colocação registrada para esta filial.
+          </span>
+        )}
+        {placements.length > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            A locação é incluída no total do demonstrativo mesmo quando não houver movimentações.
+          </p>
+        )}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Resíduos</Label>
+          {rows.map((row) => (
+            <label key={row.residue.id} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={selectedResidues.includes(row.residue.id)}
+                onCheckedChange={() => toggle(selectedResidues, onResidues, row.residue.id)}
+              />
+              {row.residue.name}
+            </label>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <Label>Serviços</Label>
+          {services.map((row) => (
+            <label key={row.service.id} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={selectedServices.includes(row.service.id)}
+                onCheckedChange={() => toggle(selectedServices, onServices, row.service.id)}
+              />
+              {row.service.name}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        <strong>Total selecionado: {money(total)}</strong>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onEdit}>
+            Editar lançamentos
+          </Button>
+          <Button onClick={onGenerate} disabled={!branch}>
+            Imprimir PDF
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+function ResidueSelect({
+  residues,
+  value,
+  onChange,
+}: {
+  residues: Residue[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger>
+        <SelectValue placeholder="Selecionar" />
+      </SelectTrigger>
+      <SelectContent>
+        {residues.map((r) => (
+          <SelectItem key={r.id} value={r.id}>
+            {r.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+function SimpleTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+  return (
+    <Card className="overflow-x-auto p-4">
+      <table className="min-w-[650px] w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-muted-foreground">
+            {headers.map((h) => (
+              <th key={h} className="p-2">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b">
+              {row.map((cell, j) => (
+                <td key={j} className="p-2">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td className="p-8 text-center text-muted-foreground" colSpan={headers.length}>
+                Nenhum registro.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+function ActionTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
+  return (
+    <Card className="overflow-x-auto p-4">
+      <table className="min-w-[650px] w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-muted-foreground">
+            {headers.map((h) => (
+              <th key={h} className="p-2">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b">
+              {row.map((cell, j) => (
+                <td key={j} className="p-2">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td className="p-8 text-center text-muted-foreground" colSpan={headers.length}>
+                Nenhum registro.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+function BillingTable({
+  rows,
+  label,
+  field,
+  admin,
+  save,
+  remove,
+}: {
+  rows: any[];
+  label: string;
+  field: "rental_rate" | "exchange_rate" | "treatment_rate";
+  admin: boolean;
+  save: (r: any, f: any, v: string) => Promise<void>;
+  remove: (r: any) => Promise<void>;
+}) {
+  const qty = (r: any) =>
+    field === "rental_rate" ? r.placed : field === "exchange_rate" ? r.exchanges : r.weight;
+  const rate = (r: any) =>
+    field === "rental_rate" ? r.rental : field === "exchange_rate" ? r.exchange : r.treatment;
+  return (
+    <Card className="overflow-x-auto p-4">
+      <table className="min-w-[650px] w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-muted-foreground">
+            <th className="p-2">Resíduo</th>
+            <th className="p-2">{field === "treatment_rate" ? "Peso (kg)" : "Quantidade"}</th>
+            <th className="p-2">{label}</th>
+            <th className="p-2">Subtotal</th>
+            {admin && <th className="p-2">Ações</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.residue.id} className="border-b">
+              <td className="p-2 font-medium">{r.residue.name}</td>
+              <td className="p-2">{n(qty(r))}</td>
+              <td className="p-2">
+                {admin ? (
+                  <Input
+                    className="h-8 max-w-32"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={rate(r)}
+                    onBlur={(e) => void save(r, field, e.target.value)}
+                  />
+                ) : (
+                  money(rate(r))
+                )}
+              </td>
+              <td className="p-2">{money(qty(r) * rate(r))}</td>
+              {admin && (
+                <td className="p-2">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Remover deste relatório"
+                    onClick={() => void remove(r)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </td>
+              )}
+            </tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td className="p-8 text-center text-muted-foreground" colSpan={admin ? 5 : 4}>
+                Nenhum resíduo incluído neste relatório.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {admin && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Altere o valor no campo ou use a lixeira para remover o item somente deste relatório.
+        </p>
+      )}
+    </Card>
+  );
+}
+function ClientMovementPrices({ clientId, mode = "operations" }: { clientId: string; mode?: "operations" | "rental" }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["waste-client-billing-settings", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_client_billing_settings" as any) as any)
+        .select("exchange_rate,treatment_rate,rental_rate")
+        .eq("client_id", clientId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { exchange_rate: number; treatment_rate: number; rental_rate: number } | null;
+    },
+  });
+  const [form, setForm] = useState({ exchange: "0", treatment: "0", rental: "0" });
+  useEffect(() => {
+    setForm({ exchange: String(data?.exchange_rate || 0), treatment: String(data?.treatment_rate || 0), rental: String(data?.rental_rate || 0) });
+  }, [data]);
+  const save = async () => {
+    if (!clientId) return;
+    const { error } = await (supabase.from("waste_client_billing_settings" as any) as any).upsert(
+      { client_id: clientId, exchange_rate: Number(form.exchange || 0), treatment_rate: Number(form.treatment || 0), rental_rate: Number(form.rental || 0) },
+      { onConflict: "client_id" },
+    );
+    if (error) toast.error(error.message);
+    else {
+      toast.success(mode === "rental" ? "Valor de locação salvo." : "Valores fixos do cliente salvos.");
+      void qc.invalidateQueries({ queryKey: ["waste-client-billing-settings", clientId] });
+    }
+  };
+  return (
+    <Card className="max-w-3xl p-4">
+      <h2 className="font-semibold">{mode === "rental" ? "Valor de locação" : "Valores fixos de movimentação"}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {mode === "rental" ? "Este é o valor mensal de locação aplicado a cada equipamento deste cliente no Faturamento 2." : "Estes valores pertencem ao cliente e serão usados no Faturamento 2."}
+      </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {mode === "operations" && <><Field label="Valor fixo por troca">
+          <Input type="number" min="0" step="0.01" value={form.exchange} disabled={isLoading} onChange={(event) => setForm({ ...form, exchange: event.target.value })} />
+        </Field>
+        <Field label="Valor de tratamento por kg">
+          <Input type="number" min="0" step="0.01" value={form.treatment} disabled={isLoading} onChange={(event) => setForm({ ...form, treatment: event.target.value })} />
+        </Field>
+        </>}
+        {mode === "rental" && <Field label="Valor mensal por equipamento">
+          <Input type="number" min="0" step="0.01" value={form.rental} disabled={isLoading} onChange={(event) => setForm({ ...form, rental: event.target.value })} />
+        </Field>}
+        <Button className="self-end" onClick={() => void save()}>Salvar valores</Button>
+      </div>
+    </Card>
+  );
+}
+
+function ServiceReportTable({
+  services,
+  reportServices,
+  admin,
+  onToggle,
+  onRate,
+}: {
+  services: Service[];
+  reportServices: ReportService[];
+  admin: boolean;
+  onToggle: (service: Service, included: boolean) => Promise<void>;
+  onRate: (item: { service: Service; rate: number }, value: string) => Promise<void>;
+}) {
+  return (
+    <Card className="overflow-x-auto p-4">
+      <p className="mb-3 text-sm text-muted-foreground">
+        Inclua somente os serviços deste faturamento e informe o valor cobrado. Os serviços
+        desmarcados não entram no total nem no PDF.
+      </p>
+      <table className="min-w-[600px] w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-muted-foreground">
+            <th className="p-2">Incluir</th>
+            <th className="p-2">Serviço</th>
+            <th className="p-2">Valor neste relatório</th>
+          </tr>
+        </thead>
+        <tbody>
+          {services.map((service) => {
+            const current = reportServices.find((item) => item.waste_service_id === service.id);
+            const included = !current?.excluded;
+            const rate = Number(current?.rate ?? 0);
+            return (
+              <tr key={service.id} className="border-b">
+                <td className="p-2">
+                  <Checkbox
+                    checked={included}
+                    disabled={!admin}
+                    onCheckedChange={(checked) => void onToggle(service, checked === true)}
+                  />
+                </td>
+                <td className="p-2 font-medium">{service.name}</td>
+                <td className="p-2">
+                  {admin ? (
+                    <Input
+                      key={`${service.id}-${rate}`}
+                      className="h-8 max-w-32"
+                      disabled={!included}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={rate}
+                      onBlur={(e) => void onRate({ service, rate }, e.target.value)}
+                    />
+                  ) : (
+                    money(rate)
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          {!services.length && (
+            <tr>
+              <td className="p-8 text-center text-muted-foreground" colSpan={3}>
+                Nenhum serviço cadastrado para este cliente.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
