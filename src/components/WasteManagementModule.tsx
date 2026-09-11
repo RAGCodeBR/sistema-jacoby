@@ -81,6 +81,8 @@ type Service = {
   default_rate: number;
   active: boolean;
 };
+type OutsourcedCompany = { id: string; legal_name: string; trade_name: string | null; logo_url: string | null };
+type OutsourcedCompanyService = { outsourced_company_id: string; waste_service_id: string };
 type ReportService = { id: string; waste_service_id: string; rate: number; excluded: boolean };
 type Report = {
   id: string;
@@ -286,7 +288,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     capacity: "",
     capacityUnit: "m3",
   });
-  const [serviceForm, setServiceForm] = useState({ name: "" });
+  const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "" });
   const [move, setMove] = useState({
     placementOrder: "",
     residue: "",
@@ -374,6 +376,28 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     },
   });
   const { data: services = [] } = clientQuery<Service>("waste-services", "waste_services");
+  const { data: outsourcedCompanies = [] } = useQuery({
+    queryKey: ["outsourced-companies"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_companies" as any) as any)
+        .select("id,legal_name,trade_name,logo_url")
+        .eq("active", true)
+        .order("legal_name");
+      if (error) throw error;
+      return (data || []) as OutsourcedCompany[];
+    },
+  });
+  const { data: outsourcedCompanyServices = [] } = useQuery({
+    queryKey: ["outsourced-company-services"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_company_services" as any) as any)
+        .select("outsourced_company_id,waste_service_id");
+      if (error) throw error;
+      return (data || []) as OutsourcedCompanyService[];
+    },
+  });
   const { data: branches = [] } = useQuery({
     queryKey: ["client-branches", clientId],
     enabled: !!clientId,
@@ -453,6 +477,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     equipmentOptions.filter((item) => item.option_type === "recipient").map((item) => item.name),
   );
   const activeServices = services.filter((s) => s.active);
+  const outsourcedCompanyForService = (serviceId: string) =>
+    outsourcedCompanyServices.find((link) => link.waste_service_id === serviceId)
+      ?.outsourced_company_id || "";
   const refreshClient = () =>
     ["waste-residues", "waste-equipment", "waste-services", "client-branches"].forEach(
       (key) => void qc.invalidateQueries({ queryKey: [key, clientId] }),
@@ -580,16 +607,27 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       if (!clientId || !serviceForm.name.trim()) throw Error("Informe o nome do serviço.");
       const payload = { client_id: clientId, name: serviceForm.name.trim(), default_rate: 0 };
       const query = supabase.from("waste_services" as any) as any;
-      const { error } = editingService
-        ? await query.update(payload).eq("id", editingService.id)
-        : await query.insert(payload);
+      const { data: saved, error } = editingService
+        ? await query.update(payload).eq("id", editingService.id).select("id").single()
+        : await query.insert(payload).select("id").single();
       if (error) throw error;
+      const serviceId = saved?.id as string;
+      const { error: clearError } = await (supabase.from("outsourced_company_services" as any) as any)
+        .delete()
+        .eq("waste_service_id", serviceId);
+      if (clearError) throw clearError;
+      if (serviceForm.outsourcedCompanyId) {
+        const { error: linkError } = await (supabase.from("outsourced_company_services" as any) as any)
+          .insert({ outsourced_company_id: serviceForm.outsourcedCompanyId, waste_service_id: serviceId });
+        if (linkError) throw linkError;
+      }
     },
     onSuccess: () => {
       toast.success(editingService ? "Serviço atualizado." : "Serviço cadastrado.");
       setEditingService(null);
-      setServiceForm({ name: "" });
+      setServiceForm({ name: "", outsourcedCompanyId: "" });
       refreshClient();
+      void qc.invalidateQueries({ queryKey: ["outsourced-company-services"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1455,6 +1493,22 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
                 />
               </Field>
+              <Field label="Empresa terceirizada">
+                <Select
+                  value={serviceForm.outsourcedCompanyId || "none"}
+                  onValueChange={(value) =>
+                    setServiceForm({ ...serviceForm, outsourcedCompanyId: value === "none" ? "" : value })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem terceirizada</SelectItem>
+                    {outsourcedCompanies.map((company) => (
+                      <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
               <div className="flex gap-2 self-end">
                 <Button onClick={() => addService.mutate()}>
                   {editingService ? "Salvar" : "Cadastrar"}
@@ -1464,7 +1518,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     variant="outline"
                     onClick={() => {
                       setEditingService(null);
-                      setServiceForm({ name: "" });
+                      setServiceForm({ name: "", outsourcedCompanyId: "" });
                     }}
                   >
                     Cancelar
@@ -1474,9 +1528,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </div>
           </Card>
           <ActionTable
-            headers={["Serviço", "Ações"]}
+            headers={["Serviço", "Empresa terceirizada", "Ações"]}
             rows={services.map((s) => [
               s.name,
+              outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(s.id))?.trade_name || outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(s.id))?.legal_name || "—",
               <div className="flex gap-1">
                 <Button
                   size="icon"
@@ -1484,7 +1539,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   title="Editar"
                   onClick={() => {
                     setEditingService(s);
-                    setServiceForm({ name: s.name });
+                    setServiceForm({ name: s.name, outsourcedCompanyId: outsourcedCompanyForService(s.id) });
                   }}
                 >
                   <Pencil className="h-4 w-4" />
@@ -1680,6 +1735,20 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       }
                     />
                   </Field>
+                  <Field label="Empresa terceirizada">
+                    <Select
+                      value={serviceForm.outsourcedCompanyId || "none"}
+                      onValueChange={(value) => setServiceForm({ ...serviceForm, outsourcedCompanyId: value === "none" ? "" : value })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem terceirizada</SelectItem>
+                        {outsourcedCompanies.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                   <div className="flex gap-2 self-end">
                     <Button onClick={() => addService.mutate()}>
                       {editingService ? "Salvar" : "Cadastrar"}
@@ -1689,7 +1758,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                         variant="outline"
                         onClick={() => {
                           setEditingService(null);
-                          setServiceForm({ name: "" });
+                          setServiceForm({ name: "", outsourcedCompanyId: "" });
                         }}
                       >
                         Cancelar
@@ -1699,9 +1768,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Serviço", "Ações"]}
+                headers={["Serviço", "Empresa terceirizada", "Ações"]}
                 rows={services.map((service) => [
                   service.name,
+                  outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(service.id))?.trade_name || outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(service.id))?.legal_name || "—",
                   <div className="flex gap-1">
                     <Button
                       size="icon"
@@ -1709,7 +1779,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       title="Editar"
                       onClick={() => {
                         setEditingService(service);
-                        setServiceForm({ name: service.name });
+                        setServiceForm({ name: service.name, outsourcedCompanyId: outsourcedCompanyForService(service.id) });
                       }}
                     >
                       <Pencil className="h-4 w-4" />

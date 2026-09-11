@@ -21,6 +21,7 @@ import { Route as AppReportsRouteImport } from './routes/_app/reports'
 import { Route as AppResiduosRouteImport } from './routes/_app/residuos'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppTasksRouteImport } from './routes/_app/tasks'
+import { Route as AppTerceirizadosRouteImport } from './routes/_app/terceirizados'
 import { Route as AppTrashRouteImport } from './routes/_app/trash'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
@@ -95,6 +96,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppTasksRoute = AppTasksRouteImport.update({
   id: '/tasks',
   path: '/tasks',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTerceirizadosRoute = AppTerceirizadosRouteImport.update({
+  id: '/terceirizados',
+  path: '/terceirizados',
   getParentRoute: () => AppRoute,
 } as any)
 const AppTrashRoute = AppTrashRouteImport.update({
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/residuos': typeof AppResiduosRoute
   '/settings': typeof AppSettingsRoute
   '/tasks': typeof AppTasksRouteWithChildren
+  '/terceirizados': typeof AppTerceirizadosRoute
   '/trash': typeof AppTrashRoute
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AppReportsRoute
   '/residuos': typeof AppResiduosRoute
   '/settings': typeof AppSettingsRoute
+  '/terceirizados': typeof AppTerceirizadosRoute
   '/trash': typeof AppTrashRoute
   '/users': typeof AppUsersRoute
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   '/_app/residuos': typeof AppResiduosRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/tasks': typeof AppTasksRouteWithChildren
+  '/_app/terceirizados': typeof AppTerceirizadosRoute
   '/_app/trash': typeof AppTrashRoute
   '/_app/users': typeof AppUsersRoute
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/residuos'
     | '/settings'
     | '/tasks'
+    | '/terceirizados'
     | '/trash'
     | '/users'
     | '/client-report/$clientId'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/residuos'
     | '/settings'
+    | '/terceirizados'
     | '/trash'
     | '/users'
     | '/client-report/$clientId'
@@ -336,6 +347,7 @@ export interface FileRouteTypes {
     | '/_app/residuos'
     | '/_app/settings'
     | '/_app/tasks'
+    | '/_app/terceirizados'
     | '/_app/trash'
     | '/_app/users'
     | '/_app/client-report/$clientId'
@@ -444,6 +456,13 @@ declare module '@tanstack/react-router' {
       path: '/tasks'
       fullPath: '/tasks'
       preLoaderRoute: typeof AppTasksRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/terceirizados': {
+      id: '/_app/terceirizados'
+      path: '/terceirizados'
+      fullPath: '/terceirizados'
+      preLoaderRoute: typeof AppTerceirizadosRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/trash': {
@@ -605,6 +624,7 @@ interface AppRouteChildren {
   AppResiduosRoute: typeof AppResiduosRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTasksRoute: typeof AppTasksRouteWithChildren
+  AppTerceirizadosRoute: typeof AppTerceirizadosRoute
   AppTrashRoute: typeof AppTrashRoute
   AppUsersRoute: typeof AppUsersRoute
   AppClientReportClientIdRoute: typeof AppClientReportClientIdRoute
@@ -626,6 +646,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppResiduosRoute: AppResiduosRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTasksRoute: AppTasksRouteWithChildren,
+  AppTerceirizadosRoute: AppTerceirizadosRoute,
   AppTrashRoute: AppTrashRoute,
   AppUsersRoute: AppUsersRoute,
   AppClientReportClientIdRoute: AppClientReportClientIdRoute,

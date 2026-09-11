@@ -57,6 +57,7 @@ const allNav: readonly NavItem[] = [
   { to: "/notes", label: "Anotações", icon: NotebookPen },
   { to: "/import-ata", label: "Importar Ata", icon: FileUp },
   { to: "/clients", label: "Clientes", icon: Building2 },
+  { to: "/terceirizados", label: "Terceirizados", icon: Building2, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
@@ -73,6 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/notes": "notes",
       "/import-ata": "import_ata",
       "/clients": "clients",
+      "/terceirizados": "clients",
       "/reports": "reports",
       "/portal": "portal",
       "/calendario": "calendar",
@@ -161,21 +163,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <>
                       <Link
                         to="/portal/residuos"
-                        search={{ aba: "faturamento" }}
-                        className={`flex items-center gap-3 rounded-lg transition ${
-                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
-                        } ${
-                          pathname === "/portal/residuos" && activeWasteTab === "faturamento"
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                        }`}
-                        title="Faturamento"
-                      >
-                        <Recycle className="h-4 w-4 shrink-0" />
-                        {sidebarOpen && <span className="truncate">Faturamento</span>}
-                      </Link>
-                      <Link
-                        to="/portal/residuos"
                         search={{ aba: "faturamento2" }}
                         className={`flex items-center gap-3 rounded-lg transition ${
                           sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
@@ -184,10 +171,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                             ? "bg-sidebar-accent text-sidebar-accent-foreground"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                         }`}
-                        title="Faturamento 2"
+                        title="Faturamento"
                       >
                         <Recycle className="h-4 w-4 shrink-0" />
-                        {sidebarOpen && <span className="truncate">Faturamento 2</span>}
+                        {sidebarOpen && <span className="truncate">Faturamento</span>}
                       </Link>
                       <Link
                         to="/portal/residuos"
@@ -338,19 +325,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                         <>
                           <Link
                             to="/portal/residuos"
-                            search={{ aba: "faturamento" }}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                              pathname === "/portal/residuos" && activeWasteTab === "faturamento"
-                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                            }`}
-                          >
-                            <Recycle className="h-4 w-4" />
-                            Faturamento
-                          </Link>
-                          <Link
-                            to="/portal/residuos"
                             search={{ aba: "faturamento2" }}
                             onClick={() => setSidebarOpen(false)}
                             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
@@ -360,7 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                             }`}
                           >
                             <Recycle className="h-4 w-4" />
-                            Faturamento 2
+                            Faturamento
                           </Link>
                           <Link
                             to="/portal/residuos"
