@@ -1,5 +1,5 @@
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Download, FilePlus2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -140,16 +141,15 @@ export function BillingV2Module() {
   });
   const [movementForm, setMovementForm] = useState({
     branchId: "",
-    equipmentId: "",
-    replacementEquipmentId: "",
     residueId: "",
     date: new Date().toISOString().slice(0, 10),
     order: "",
-    placed: "0",
-    removed: "0",
     weight: "0",
     observation: "",
   });
+  const [outgoingPlacementIds, setOutgoingPlacementIds] = useState<string[]>([]);
+  const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
+  const savingMovementRef = useRef(false);
   const [ratesForm, setRatesForm] = useState({ exchange: "0", treatment: "0" });
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
@@ -290,6 +290,23 @@ export function BillingV2Module() {
     outsourcedCompanyServices = outsourcedCompanyServicesQuery.data || [],
     cycleServices = cycleServicesQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
+  const activePlacementsAtBranch = useMemo(
+    () =>
+      placements.filter(
+        (item) =>
+          item.branch_id === movementForm.branchId &&
+          !item.ended_on &&
+          Number(item.quantity || 0) > 0,
+      ),
+    [placements, movementForm.branchId],
+  );
+  const selectedOutgoingPlacements = activePlacementsAtBranch.filter((item) =>
+    outgoingPlacementIds.includes(item.id),
+  );
+  const outgoingQuantity = selectedOutgoingPlacements.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0,
+  );
   useEffect(() => {
     if (ratesQuery.data)
       setRatesForm({
@@ -389,90 +406,96 @@ export function BillingV2Module() {
   });
   const addMovement = useMutation({
     mutationFn: async () => {
+      if (savingMovementRef.current) return;
+      savingMovementRef.current = true;
+      try {
       if (!cycleId || !movementForm.branchId)
         throw Error("Abra um boletim e informe a filial/pátio.");
-      const removed = Number(movementForm.removed || 0);
-      if (removed > 0 && !movementForm.equipmentId)
-        throw Error("Selecione o equipamento removido.");
-      if (movementForm.replacementEquipmentId && removed <= 0)
-        throw Error("Informe a quantidade removida para registrar a troca.");
-      const { error } = await (supabase.from("billing_v2_movements" as any) as any).insert({
+      const hasOutgoing = selectedOutgoingPlacements.length > 0;
+      const hasIncoming = incomingEquipmentIds.length > 0;
+      if (hasOutgoing !== hasIncoming)
+        throw Error("Para registrar a troca, informe os equipamentos no local e os equipamentos colocados.");
+      if (hasOutgoing && !Number.isInteger(outgoingQuantity))
+        throw Error("A quantidade dos equipamentos em locação deve ser inteira para uma troca em lote.");
+      if (hasOutgoing && incomingEquipmentIds.length !== outgoingQuantity)
+        throw Error(`Selecione ${outgoingQuantity} equipamento(s) colocado(s) para concluir esta troca.`);
+
+      let incomingIndex = 0;
+      const pairs = hasOutgoing
+        ? selectedOutgoingPlacements.flatMap((placement) =>
+            Array.from({ length: Number(placement.quantity || 0) }, () => ({
+              placement,
+              replacementEquipmentId: incomingEquipmentIds[incomingIndex++],
+            })),
+          )
+        : [{ placement: null, replacementEquipmentId: null }];
+      const totalWeight = Number(movementForm.weight || 0);
+      const movementRows = pairs.map((pair, index) => ({
         cycle_id: cycleId,
         branch_id: movementForm.branchId,
-        equipment_id: movementForm.equipmentId || null,
-        replacement_equipment_id: movementForm.replacementEquipmentId || null,
+        equipment_id: pair.placement?.equipment_id || null,
+        replacement_equipment_id: pair.replacementEquipmentId,
         waste_residue_id: movementForm.residueId || null,
         occurred_on: movementForm.date,
         service_order: movementForm.order || null,
-        placed_quantity: Number(movementForm.placed || 0),
-        removed_quantity: removed,
-        weight_kg: Number(movementForm.weight || 0),
+        placed_quantity: hasOutgoing ? 1 : 0,
+        removed_quantity: hasOutgoing ? 1 : 0,
+        weight_kg:
+          index === pairs.length - 1
+            ? totalWeight - (totalWeight / pairs.length) * index
+            : totalWeight / pairs.length,
         observation: movementForm.observation || null,
-      });
+      }));
+      const { error } = await (supabase.from("billing_v2_movements" as any) as any).insert(movementRows);
       if (error) throw error;
-      if (movementForm.replacementEquipmentId) {
-        const { data: activePlacement, error: findPlacementError } = await (
-          supabase.from("billing_v2_placements" as any) as any
-        )
-          .select("id,quantity,started_on,monthly_rental_rate,waste_residue_id,observation")
-          .eq("cycle_id", cycleId)
-          .eq("client_id", clientId)
-          .eq("branch_id", movementForm.branchId)
-          .eq("equipment_id", movementForm.equipmentId)
-          .is("ended_on", null)
-          .order("started_on", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (findPlacementError) throw findPlacementError;
-        if (!activePlacement) {
-          throw Error("Não foi encontrada uma locação ativa para o equipamento removido.");
+
+      if (hasOutgoing) {
+        let replacementIndex = 0;
+        for (const placement of selectedOutgoingPlacements) {
+          const quantity = Number(placement.quantity || 0);
+          const replacements = incomingEquipmentIds.slice(replacementIndex, replacementIndex + quantity);
+          replacementIndex += quantity;
+          if (quantity === 1) {
+            const { error: replaceError } = await (supabase.from("billing_v2_placements" as any) as any)
+              .update({ equipment_id: replacements[0] })
+              .eq("id", placement.id);
+            if (replaceError) throw replaceError;
+          } else {
+            const { error: deleteError } = await (supabase.from("billing_v2_placements" as any) as any)
+              .delete()
+              .eq("id", placement.id);
+            if (deleteError) throw deleteError;
+            const { error: replacementError } = await (supabase.from("billing_v2_placements" as any) as any).insert(
+              replacements.map((equipmentId) => ({
+                cycle_id: cycleId,
+                client_id: clientId,
+                branch_id: movementForm.branchId,
+                equipment_id: equipmentId,
+                waste_residue_id: placement.waste_residue_id,
+                started_on: placement.started_on,
+                quantity: 1,
+                monthly_rental_rate: Number(placement.monthly_rental_rate || 0),
+                observation: placement.observation,
+              })),
+            );
+            if (replacementError) throw replacementError;
+          }
         }
-        const activeQuantity = Number(activePlacement.quantity || 0);
-        if (removed > activeQuantity) {
-          throw Error("A quantidade removida é maior que a quantidade em locação deste equipamento.");
-        }
-        // A troca não soma uma locação: ela apenas substitui o equipamento no mesmo saldo.
-        if (removed === activeQuantity) {
-          const { error: replaceError } = await (
-            supabase.from("billing_v2_placements" as any) as any
-          )
-            .update({ equipment_id: movementForm.replacementEquipmentId })
-            .eq("id", activePlacement.id);
-          if (replaceError) throw replaceError;
-        } else {
-          const { error: reduceError } = await (supabase.from("billing_v2_placements" as any) as any)
-            .update({ quantity: activeQuantity - removed })
-            .eq("id", activePlacement.id);
-          if (reduceError) throw reduceError;
-          const { error: replacementError } = await (
-            supabase.from("billing_v2_placements" as any) as any
-          ).insert({
-            cycle_id: cycleId,
-            client_id: clientId,
-            branch_id: movementForm.branchId,
-            equipment_id: movementForm.replacementEquipmentId,
-            waste_residue_id: activePlacement.waste_residue_id,
-            started_on: activePlacement.started_on,
-            quantity: removed,
-            monthly_rental_rate: Number(activePlacement.monthly_rental_rate || 0),
-            observation: activePlacement.observation,
-          });
-          if (replacementError) throw replacementError;
-        }
+      }
+      } finally {
+        savingMovementRef.current = false;
       }
     },
     onSuccess: () => {
       setMovementForm({
         ...movementForm,
-        equipmentId: "",
-        replacementEquipmentId: "",
         residueId: "",
         order: "",
-        placed: "0",
-        removed: "0",
         weight: "0",
         observation: "",
       });
+      setOutgoingPlacementIds([]);
+      setIncomingEquipmentIds([]);
       refresh();
       toast.success("Movimentação registrada.");
     },
@@ -910,16 +933,19 @@ export function BillingV2Module() {
               <Card className="p-4">
                 <h2 className="font-semibold">Movimentações do boletim</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  As removidas formam as trocas. Ao informar o equipamento da troca, a locação
-                  anterior é encerrada e a nova inicia com o valor fixo do cliente.
+                  Escolha o pátio para ver somente os equipamentos atualmente em locação nele.
+                  Em uma troca, selecione a mesma quantidade de equipamentos no local e colocados.
+                  O peso informado é dividido automaticamente entre cada troca.
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <Field label="Filial ou pátio">
                     <Select
                       value={movementForm.branchId}
-                      onValueChange={(value) =>
-                        setMovementForm({ ...movementForm, branchId: value })
-                      }
+                      onValueChange={(value) => {
+                        setMovementForm({ ...movementForm, branchId: value });
+                        setOutgoingPlacementIds([]);
+                        setIncomingEquipmentIds([]);
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecionar" />
@@ -930,46 +956,6 @@ export function BillingV2Module() {
                             {item.name}
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label="Equipamento removido">
-                    <Select
-                      value={movementForm.equipmentId}
-                      onValueChange={(value) =>
-                        setMovementForm({ ...movementForm, equipmentId: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione quando houver troca" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {equipment.map((item) => (
-                          <SelectItem key={item.id} value={item.id}>
-                            {equipmentName(item)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label="Equipamento da troca">
-                    <Select
-                      value={movementForm.replacementEquipmentId}
-                      onValueChange={(value) =>
-                        setMovementForm({ ...movementForm, replacementEquipmentId: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Opcional" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {equipment
-                          .filter((item) => item.id !== movementForm.equipmentId)
-                          .map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {equipmentName(item)}
-                            </SelectItem>
-                          ))}
                       </SelectContent>
                     </Select>
                   </Field>
@@ -1009,26 +995,6 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
-                  <Field label="Colocadas">
-                    <Input
-                      type="number"
-                      min="0"
-                      value={movementForm.placed}
-                      onChange={(event) =>
-                        setMovementForm({ ...movementForm, placed: event.target.value })
-                      }
-                    />
-                  </Field>
-                  <Field label="Removidas / trocas">
-                    <Input
-                      type="number"
-                      min="0"
-                      value={movementForm.removed}
-                      onChange={(event) =>
-                        setMovementForm({ ...movementForm, removed: event.target.value })
-                      }
-                    />
-                  </Field>
                   <Field label="Peso (kg)">
                     <Input
                       type="number"
@@ -1040,6 +1006,61 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
+                  <div className="md:col-span-4 grid gap-3 md:grid-cols-2">
+                    <Field label="Equipamentos no local">
+                      <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
+                        {!movementForm.branchId ? (
+                          <p className="text-sm text-muted-foreground">Selecione primeiro a filial ou pátio.</p>
+                        ) : activePlacementsAtBranch.length ? (
+                          activePlacementsAtBranch.map((placement) => {
+                            const item = equipment.find((entry) => entry.id === placement.equipment_id);
+                            const checked = outgoingPlacementIds.includes(placement.id);
+                            return (
+                              <label key={placement.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(value) =>
+                                    setOutgoingPlacementIds((current) =>
+                                      value ? [...current, placement.id] : current.filter((id) => id !== placement.id),
+                                    )
+                                  }
+                                />
+                                <span>{equipmentName(item)} {Number(placement.quantity) > 1 ? `(${number(Number(placement.quantity))} unidades)` : ""}</span>
+                              </label>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Nenhum equipamento em locação neste pátio.</p>
+                        )}
+                      </div>
+                    </Field>
+                    <Field label="Equipamentos colocados / troca">
+                      <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
+                        {equipment.filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id)).map((item) => {
+                          const checked = incomingEquipmentIds.includes(item.id);
+                          return (
+                            <label key={item.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  setIncomingEquipmentIds((current) =>
+                                    value ? [...current, item.id] : current.filter((id) => id !== item.id),
+                                  )
+                                }
+                              />
+                              <span>{equipmentName(item)}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                  </div>
+                  {(outgoingPlacementIds.length > 0 || incomingEquipmentIds.length > 0) && (
+                    <p className="md:col-span-4 text-sm text-muted-foreground">
+                      Troca: {number(outgoingQuantity)} equipamento(s) no local por {incomingEquipmentIds.length} equipamento(s) colocado(s).
+                      {outgoingQuantity > 0 && ` Peso por equipamento: ${number(Number(movementForm.weight || 0) / outgoingQuantity)} kg.`}
+                    </p>
+                  )}
                   <Field label="Observação">
                     <Input
                       value={movementForm.observation}
@@ -1048,8 +1069,8 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
-                  <Button className="self-end" onClick={() => addMovement.mutate()}>
-                    Registrar movimentação
+                  <Button className="self-end" disabled={addMovement.isPending} onClick={() => addMovement.mutate()}>
+                    {addMovement.isPending ? "Registrando..." : "Registrar movimentação"}
                   </Button>
                 </div>
               </Card>
@@ -1188,8 +1209,8 @@ function PlacementTable({
           <tr className="border-b text-left text-muted-foreground">
             <th className="p-2">Início</th>
             <th className="p-2">Filial/pátio</th>
-            <th className="p-2">Equipamento que saiu</th>
-            <th className="p-2">Equipamento que entrou</th>
+            <th className="p-2">Equipamento no local</th>
+            <th className="p-2">Equipamento colocado / troca</th>
             <th className="p-2">Resíduo</th>
             <th className="p-2">Quantidade</th>
             <th className="p-2">Valor da locação</th>
