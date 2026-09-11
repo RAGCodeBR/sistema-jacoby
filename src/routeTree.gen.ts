@@ -42,6 +42,7 @@ import { Route as AppTasksListRouteImport } from './routes/_app/tasks.list'
 import { Route as ApiOnedriveCallbackRouteImport } from './routes/api/onedrive.callback'
 import { Route as AppClientsClientIdEditRouteImport } from './routes/_app/clients.$clientId.edit'
 import { Route as ApiOnedriveContentItemIdRouteImport } from './routes/api/onedrive.content.$itemId'
+import { Route as ApiOnedriveDownloadItemIdRouteImport } from './routes/api/onedrive.download.$itemId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -208,6 +209,12 @@ const ApiOnedriveContentItemIdRoute =
     path: '/content/$itemId',
     getParentRoute: () => ApiOnedriveRoute,
   } as any)
+const ApiOnedriveDownloadItemIdRoute =
+  ApiOnedriveDownloadItemIdRouteImport.update({
+    id: '/download/$itemId',
+    path: '/download/$itemId',
+    getParentRoute: () => ApiOnedriveRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -242,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/tasks/': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
   '/api/onedrive/content/$itemId': typeof ApiOnedriveContentItemIdRoute
+  '/api/onedrive/download/$itemId': typeof ApiOnedriveDownloadItemIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -274,6 +282,7 @@ export interface FileRoutesByTo {
   '/tasks': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
   '/api/onedrive/content/$itemId': typeof ApiOnedriveContentItemIdRoute
+  '/api/onedrive/download/$itemId': typeof ApiOnedriveDownloadItemIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -310,6 +319,7 @@ export interface FileRoutesById {
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
   '/api/onedrive/content/$itemId': typeof ApiOnedriveContentItemIdRoute
+  '/api/onedrive/download/$itemId': typeof ApiOnedriveDownloadItemIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -346,6 +356,7 @@ export interface FileRouteTypes {
     | '/tasks/'
     | '/clients/$clientId/edit'
     | '/api/onedrive/content/$itemId'
+    | '/api/onedrive/download/$itemId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -378,6 +389,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/clients/$clientId/edit'
     | '/api/onedrive/content/$itemId'
+    | '/api/onedrive/download/$itemId'
   id:
     | '__root__'
     | '/'
@@ -413,6 +425,7 @@ export interface FileRouteTypes {
     | '/_app/tasks/'
     | '/_app/clients/$clientId/edit'
     | '/api/onedrive/content/$itemId'
+    | '/api/onedrive/download/$itemId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -655,6 +668,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOnedriveContentItemIdRouteImport
       parentRoute: typeof ApiOnedriveRoute
     }
+    '/api/onedrive/download/$itemId': {
+      id: '/api/onedrive/download/$itemId'
+      path: '/download/$itemId'
+      fullPath: '/api/onedrive/download/$itemId'
+      preLoaderRoute: typeof ApiOnedriveDownloadItemIdRouteImport
+      parentRoute: typeof ApiOnedriveRoute
+    }
   }
 }
 
@@ -743,11 +763,13 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 interface ApiOnedriveRouteChildren {
   ApiOnedriveCallbackRoute: typeof ApiOnedriveCallbackRoute
   ApiOnedriveContentItemIdRoute: typeof ApiOnedriveContentItemIdRoute
+  ApiOnedriveDownloadItemIdRoute: typeof ApiOnedriveDownloadItemIdRoute
 }
 
 const ApiOnedriveRouteChildren: ApiOnedriveRouteChildren = {
   ApiOnedriveCallbackRoute: ApiOnedriveCallbackRoute,
   ApiOnedriveContentItemIdRoute: ApiOnedriveContentItemIdRoute,
+  ApiOnedriveDownloadItemIdRoute: ApiOnedriveDownloadItemIdRoute,
 }
 
 const ApiOnedriveRouteWithChildren = ApiOnedriveRoute._addFileChildren(

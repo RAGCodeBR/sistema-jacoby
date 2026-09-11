@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { authenticateFilesRequest, createAuthorizationUrl, createFolder, deleteItem, disconnectOneDrive, getConnectionStatus, listItems, renameItem, uploadItem } from "@/lib/onedrive.server";
+import { authenticateFilesRequest, createAuthorizationUrl, createDownloadUrl, createFolder, deleteItem, disconnectOneDrive, getConnectionStatus, listItems, renameItem, uploadItem } from "@/lib/onedrive.server";
 
 function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "Não foi possível concluir a ação no OneDrive.";
@@ -38,6 +38,10 @@ export const Route = createFileRoute("/api/onedrive")({
             if (!body.itemId) throw new Error("Arquivo não identificado.");
             await deleteItem(ownerId, body.itemId);
             return Response.json({ ok: true });
+          }
+          if (body.action === "download-url") {
+            if (!body.itemId || !body.name) throw new Error("Arquivo não identificado.");
+            return Response.json({ url: await createDownloadUrl(ownerId, body.itemId, body.name) });
           }
           if (body.action === "upload") {
             if (!body.name || !body.base64) throw new Error("Selecione o arquivo para enviar.");

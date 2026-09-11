@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { FILES_OWNER_ID } from "@/lib/files-access";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { createClient } from "@supabase/supabase-js";
@@ -190,6 +190,32 @@ export async function getItemContent(ownerId: string, itemId: string) {
     throw new Error(json?.error?.message || "Não foi possível carregar o arquivo.");
   }
   return response;
+}
+
+type DownloadTicket = { ownerId: string; itemId: string; name: string; expiresAt: number };
+
+function downloadSignature(payload: string) {
+  return createHmac("sha256", key()).update(payload).digest("base64url");
+}
+
+export async function createDownloadUrl(ownerId: string, itemId: string, name: string) {
+  await assertFilesOwner(ownerId);
+  const payload = Buffer.from(JSON.stringify({ ownerId, itemId, name, expiresAt: Date.now() + 2 * 60 * 1000 } satisfies DownloadTicket)).toString("base64url");
+  return `/api/onedrive/download/${encodeURIComponent(itemId)}?ticket=${encodeURIComponent(`${payload}.${downloadSignature(payload)}`)}`;
+}
+
+export async function getTicketedDownload(itemId: string, ticket: string | null) {
+  if (!ticket) throw new Response("Unauthorized", { status: 401 });
+  const separator = ticket.lastIndexOf(".");
+  const payload = separator > 0 ? ticket.slice(0, separator) : "";
+  const supplied = separator > 0 ? ticket.slice(separator + 1) : "";
+  const expected = payload ? downloadSignature(payload) : "";
+  const validSignature = supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+  if (!validSignature) throw new Response("Unauthorized", { status: 401 });
+  let data: DownloadTicket;
+  try { data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch { throw new Response("Unauthorized", { status: 401 }); }
+  if (data.itemId !== itemId || data.ownerId !== FILES_OWNER_ID || data.expiresAt < Date.now()) throw new Response("Unauthorized", { status: 401 });
+  return { name: data.name, content: await getItemContent(data.ownerId, itemId) };
 }
 
 export async function disconnectOneDrive(ownerId: string) {

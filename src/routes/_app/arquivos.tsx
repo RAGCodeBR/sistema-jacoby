@@ -122,35 +122,14 @@ function FilesPage() {
       setPreview({ itemId: item.id, name: item.name, mimeType, url });
     });
   };
-  const downloadPreview = async () => {
-    if (!preview) return;
-    if (!preview.url) {
-      const item = items.find((candidate) => candidate.id === preview.itemId);
-      if (!item) return;
-      const response = await fetch(`/api/onedrive/content/${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
-      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || "Não foi possível baixar o arquivo."); }
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = preview.name;
-      link.click();
-      URL.revokeObjectURL(url);
-      return;
-    }
-    const link = document.createElement("a");
-    link.href = preview.url;
-    link.download = preview.name;
-    link.click();
-  };
   const downloadItem = async (item: OneDriveItem) => {
-    const response = await fetch(`/api/onedrive/content/${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
-    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || "Não foi possível baixar o arquivo."); }
-    const url = URL.createObjectURL(await response.blob());
+    const data = await request("POST", { action: "download-url", itemId: item.id, name: item.name });
     const link = document.createElement("a");
-    link.href = url;
-    link.download = item.name;
+    link.href = data.url;
+    link.style.display = "none";
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
   };
 
   return <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
