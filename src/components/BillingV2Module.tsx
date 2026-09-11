@@ -179,7 +179,7 @@ export function BillingV2Module() {
     "waste_equipment",
     (q) =>
       q
-        .select("id,identification,name,equipment_type,active")
+        .select("id,branch_id,identification,name,equipment_type,active")
         .eq("client_id", clientId)
         .eq("active", true)
         .order("name"),

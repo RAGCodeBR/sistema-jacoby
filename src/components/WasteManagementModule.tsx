@@ -1695,7 +1695,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               </Card>
               <ActionTable
                 headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
-                rows={equipment.map((e) => [
+                rows={equipment
+                  .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
+                  .map((e) => [
                   branches.find((branch) => branch.id === e.branch_id)?.name || "—",
                   e.identification || "—",
                   e.name,
@@ -1740,7 +1742,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>,
-                ])}
+                  ])}
               />
             </TabsContent>
             <TabsContent value="servicos" className="space-y-4">
