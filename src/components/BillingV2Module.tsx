@@ -588,6 +588,7 @@ export function BillingV2Module() {
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
     cycleServices.some((service) => service.outsourced_company_id === company.id),
   );
+  const hasThirdPartyContext = Boolean(documentThirdParty) || cycleServices.length > 0;
   const availableServices = services.filter((service) => {
     if (cycle?.issuer_type !== "outsourced" || !cycle.outsourced_company_id) return true;
     return outsourcedCompanyServices.some((link) => link.waste_service_id === service.id && link.outsourced_company_id === cycle.outsourced_company_id);
@@ -638,9 +639,21 @@ export function BillingV2Module() {
         doc.setTextColor(39, 61, 45); doc.setFontSize(9); doc.text(doc.splitTextToSize(name, 76)[0], x + 5, companyY + 13);
         doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 76).slice(0, 3), x + 5, companyY + 19);
       };
-      drawCompanyCard(14, "Jacoby Soluções Ambientais - Gerenciadora", jacoby.trade_name || jacoby.legal_name, companyDetails(jacoby));
-      drawCompanyCard(108, "Terceirizada - Executora / Transportadora", documentThirdParty?.trade_name || documentThirdParty?.legal_name || "Não informada", companyDetails(documentThirdParty || {}));
-      let y = 110;
+      let y: number;
+      if (hasThirdPartyContext) {
+        drawCompanyCard(14, "Jacoby Soluções Ambientais - Gerenciadora", jacoby.trade_name || jacoby.legal_name, companyDetails(jacoby));
+        drawCompanyCard(108, "Terceirizada - Executora / Transportadora", documentThirdParty?.trade_name || documentThirdParty?.legal_name || "Não informada", companyDetails(documentThirdParty || {}));
+        y = 110;
+      } else {
+        doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 25, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 25, 3, 3, "S");
+        doc.setFillColor(225, 241, 221); doc.roundedRect(14, companyY, 182, 7, 3, 3, "F");
+        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+        doc.text("JACOBY SOLUÇÕES AMBIENTAIS · GERENCIADORA DO BOLETIM", 20, companyY + 5);
+        doc.setTextColor(39, 61, 45); doc.setFontSize(10); doc.text(jacoby.trade_name || jacoby.legal_name, 20, companyY + 13);
+        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+        doc.text(doc.splitTextToSize(companyDetails(jacoby) || "Dados cadastrais não informados.", 168).slice(0, 2), 20, companyY + 19);
+        y = 101;
+      }
       doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 26, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 26, 3, 3, "S");
       doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(`Empresa geradora / unidade: ${pageBranch.name}`, 20, y + 8);
       const details = [pageBranch.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch.address].filter(Boolean).join(" · ");
