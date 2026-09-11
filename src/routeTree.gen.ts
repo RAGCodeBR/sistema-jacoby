@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AppArquivosRouteImport } from './routes/_app/arquivos'
 import { Route as AppCalendarioRouteImport } from './routes/_app/calendario'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
@@ -52,6 +53,11 @@ const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppArquivosRoute = AppArquivosRouteImport.update({
+  id: '/arquivos',
+  path: '/arquivos',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCalendarioRoute = AppCalendarioRouteImport.update({
   id: '/calendario',
@@ -187,6 +193,7 @@ const AppClientsClientIdEditRoute = AppClientsClientIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/arquivos': typeof AppArquivosRoute
   '/calendario': typeof AppCalendarioRoute
   '/clients': typeof AppClientsRouteWithChildren
   '/dashboard': typeof AppDashboardRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/arquivos': typeof AppArquivosRoute
   '/calendario': typeof AppCalendarioRoute
   '/dashboard': typeof AppDashboardRoute
   '/import-ata': typeof AppImportAtaRoute
@@ -247,6 +255,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_app/arquivos': typeof AppArquivosRoute
   '/_app/calendario': typeof AppCalendarioRoute
   '/_app/clients': typeof AppClientsRouteWithChildren
   '/_app/dashboard': typeof AppDashboardRoute
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/arquivos'
     | '/calendario'
     | '/clients'
     | '/dashboard'
@@ -309,6 +319,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/arquivos'
     | '/calendario'
     | '/dashboard'
     | '/import-ata'
@@ -338,6 +349,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/auth'
+    | '/_app/arquivos'
     | '/_app/calendario'
     | '/_app/clients'
     | '/_app/dashboard'
@@ -394,6 +406,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/arquivos': {
+      id: '/_app/arquivos'
+      path: '/arquivos'
+      fullPath: '/arquivos'
+      preLoaderRoute: typeof AppArquivosRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/calendario': {
       id: '/_app/calendario'
@@ -615,6 +634,7 @@ const AppTasksRouteWithChildren = AppTasksRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppArquivosRoute: typeof AppArquivosRoute
   AppCalendarioRoute: typeof AppCalendarioRoute
   AppClientsRoute: typeof AppClientsRouteWithChildren
   AppDashboardRoute: typeof AppDashboardRoute
@@ -637,6 +657,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppArquivosRoute: AppArquivosRoute,
   AppCalendarioRoute: AppCalendarioRoute,
   AppClientsRoute: AppClientsRouteWithChildren,
   AppDashboardRoute: AppDashboardRoute,

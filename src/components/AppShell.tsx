@@ -26,6 +26,7 @@ import {
   Recycle,
   MapPinned,
   KeyRound,
+  FolderOpen,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
@@ -63,6 +64,7 @@ const allNav: readonly NavItem[] = [
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
   { to: "/portal/documentos", label: "Documentos", icon: FileText },
+  { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/portal/residuos", label: "Faturamento", icon: Recycle, adminOnly: true, tab: "faturamento2" },
   { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, adminOnly: true, tab: "configuracoes" },
@@ -81,6 +83,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/terceirizados": "clients",
       "/reports": "reports",
       "/portal/documentos": "portal",
+      "/arquivos": "documents",
       "/portal": "portal",
       "/portal/residuos": "portal",
       "/calendario": "calendar",
