@@ -23,6 +23,7 @@ import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 type Branch = { id: string; name: string; cnpj: string | null; address: string | null };
 type Equipment = {
   id: string;
+  branch_id: string | null;
   identification: string | null;
   name: string;
   equipment_type: string;
@@ -1036,7 +1037,10 @@ export function BillingV2Module() {
                     </Field>
                     <Field label="Equipamentos colocados / troca">
                       <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
-                        {equipment.filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id)).map((item) => {
+                        {equipment
+                          .filter((item) => item.branch_id === movementForm.branchId)
+                          .filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id))
+                          .map((item) => {
                           const checked = incomingEquipmentIds.includes(item.id);
                           return (
                             <label key={item.id} className="flex cursor-pointer items-center gap-2 text-sm">

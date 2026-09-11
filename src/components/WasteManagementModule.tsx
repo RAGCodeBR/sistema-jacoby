@@ -38,6 +38,7 @@ type Residue = {
 };
 type Equipment = {
   id: string;
+  branch_id: string | null;
   identification: string | null;
   name: string;
   equipment_type: string;
@@ -282,6 +283,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     unit: "kg",
   });
   const [eqForm, setEqForm] = useState({
+    branchId: "",
     identification: "",
     name: "",
     type: "",
@@ -497,6 +499,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       if (!clientId || !resForm.name) throw Error("Informe o tipo de resíduo.");
       const payload = {
         client_id: clientId,
+        branch_id: eqForm.branchId || null,
         name: resForm.name,
         waste_class: resForm.waste_class,
         unit: resForm.unit,
@@ -551,10 +554,11 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   });
   const addEquipment = useMutation({
     mutationFn: async () => {
-      if (!clientId || !eqForm.name.trim() || !eqForm.type.trim())
-        throw Error("Informe veículo/modelo e recipiente.");
+      if (!clientId || !eqForm.branchId || !eqForm.name.trim() || !eqForm.type.trim())
+        throw Error("Informe pátio, veículo/modelo e recipiente.");
       const payload = {
         client_id: clientId,
+        branch_id: eqForm.branchId,
         identification: eqForm.identification.trim() || null,
         name: eqForm.name.trim(),
         equipment_type: eqForm.type.trim(),
@@ -591,6 +595,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       toast.success(editingEquipment ? "Equipamento atualizado." : "Equipamento cadastrado.");
       setEditingEquipment(null);
       setEqForm({
+        branchId: "",
         identification: "",
         name: "",
         type: "",
@@ -1593,7 +1598,24 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   Selecione uma sugestão já cadastrada ou digite uma nova opção. Ao salvar, ela
                   ficará disponível para os próximos cadastros.
                 </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <Field label="Filial ou pátio">
+                    <Select
+                      value={eqForm.branchId}
+                      onValueChange={(value) => setEqForm({ ...eqForm, branchId: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {branches.filter((branch) => branch.is_active).map((branch) => (
+                          <SelectItem key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                   <Field label="Identificação">
                     <Input
                       placeholder="Ex.: CAÇ-001"
@@ -1656,6 +1678,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                         onClick={() => {
                           setEditingEquipment(null);
                           setEqForm({
+                            branchId: "",
                             identification: "",
                             name: "",
                             type: "",
@@ -1671,8 +1694,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
+                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
                 rows={equipment.map((e) => [
+                  branches.find((branch) => branch.id === e.branch_id)?.name || "—",
                   e.identification || "—",
                   e.name,
                   e.equipment_type,
@@ -1689,6 +1713,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       onClick={() => {
                         setEditingEquipment(e);
                         setEqForm({
+                          branchId: e.branch_id || "",
                           identification: e.identification || "",
                           name: e.name,
                           type: e.equipment_type,
