@@ -3,14 +3,15 @@ import { Cloud, FileUp, FolderOpen, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { FILES_OWNER_ID } from "@/lib/files-access";
 
 export const Route = createFileRoute("/_app/arquivos")({ component: FilesPage });
 
 function FilesPage() {
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, loading, user } = useAuth();
 
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Carregando…</div>;
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  if (!isAdmin || user?.id !== FILES_OWNER_ID) return <Navigate to="/dashboard" replace />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">

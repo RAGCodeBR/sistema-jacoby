@@ -35,6 +35,7 @@ import jacobyLogo from "@/assets/jacoby-logo.webp";
 import jacobyLogoFull from "@/assets/jacoby-logo-transparent.png";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
+import { FILES_OWNER_ID } from "@/lib/files-access";
 
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -55,6 +56,7 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  ownerOnly?: boolean;
   tab?: "faturamento2" | "configuracoes";
 };
 const allNav: readonly NavItem[] = [
@@ -64,7 +66,7 @@ const allNav: readonly NavItem[] = [
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
   { to: "/portal/documentos", label: "Documentos", icon: FileText },
-  { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true },
+  { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/portal/residuos", label: "Faturamento", icon: Recycle, adminOnly: true, tab: "faturamento2" },
   { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, adminOnly: true, tab: "configuracoes" },
@@ -92,9 +94,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/settings": "settings",
     };
     return allNav.filter(
-      (item) => (!item.adminOnly || isAdmin) && hasPermission(accessByPath[item.to]),
+      (item) =>
+        (!item.adminOnly || isAdmin) &&
+        (!item.ownerOnly || user?.id === FILES_OWNER_ID) &&
+        hasPermission(accessByPath[item.to]),
     );
-  }, [isAdmin, hasPermission]);
+  }, [isAdmin, hasPermission, user?.id]);
 
   useEffect(() => {
     if (isAdmin) void (supabase.rpc("jacoby_process_document_alerts") as any);
