@@ -171,6 +171,17 @@ export function BillingV2Module() {
   const cyclesQuery = query<Cycle>(["billing-v2-cycles", clientId], "billing_v2_cycles", (q) =>
     q.select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
   );
+  const recentCyclesQuery = useQuery({
+    queryKey: ["billing-v2-recent"],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      return (data || []) as Cycle[];
+    },
+  });
   const branchesQuery = query<Branch>(["billing-v2-branches", clientId], "client_branches", (q) =>
     q.select("id,name,cnpj,address").eq("client_id", clientId).eq("is_active", true).order("name"),
   );
@@ -221,7 +232,9 @@ export function BillingV2Module() {
       return data as CompanyProfile | null;
     },
   });
-  const cycle = (cyclesQuery.data || []).find((item) => item.id === cycleId);
+  const cycle =
+    (cyclesQuery.data || []).find((item) => item.id === cycleId) ||
+    (recentCyclesQuery.data || []).find((item) => item.id === cycleId);
   const placementsQuery = useQuery({
     queryKey: ["billing-v2-placements", cycleId],
     enabled: Boolean(cycleId),
@@ -331,6 +344,7 @@ export function BillingV2Module() {
     onSuccess: (id) => {
       setCycleId(id);
       qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       setTab("locacoes");
       toast.success("Novo boletim aberto para edição.");
     },
@@ -531,6 +545,7 @@ export function BillingV2Module() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       toast.success("Boletim finalizado. Ele continuará disponível para edição e reimpressão.");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -558,6 +573,7 @@ export function BillingV2Module() {
       setTab("historico");
     }
     qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
     qc.invalidateQueries({ queryKey: ["billing-v2-placements", item.id] });
     qc.invalidateQueries({ queryKey: ["billing-v2-movements", item.id] });
     qc.invalidateQueries({ queryKey: ["billing-v2-rates", item.id] });
@@ -584,6 +600,12 @@ export function BillingV2Module() {
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
   const branch = (id: string) => branches.find((item) => item.id === id);
   const clientCycles = cyclesQuery.data || [];
+  const recentCycles = recentCyclesQuery.data || [];
+  const openRecentCycle = (item: Cycle) => {
+    setClientId(item.client_id);
+    setCycleId(item.id);
+    setTab("locacoes");
+  };
   const issuerCompany = outsourcedCompanies.find((company) => company.id === cycle?.outsourced_company_id);
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
     cycleServices.some((service) => service.outsourced_company_id === company.id),
@@ -795,8 +817,23 @@ export function BillingV2Module() {
         </Button>
       </Card>
       {!cycleId ? (
+        <>
+          <Card className="p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h2 className="font-semibold">Boletins recentes</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Abra rapidamente um boletim de qualquer cliente.</p>
+              </div>
+              <span className="text-xs text-muted-foreground">Últimos 8 registros</span>
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
+                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
+              </tbody></table>
+            </div>
+          </Card>
         <Card className="p-5">
-          <h2 className="font-semibold">Boletins do cliente</h2>
+          <h2 className="font-semibold">Boletins de {clientName}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Abra qualquer boletim para continuar a edição, mesmo depois de finalizado.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
@@ -804,6 +841,7 @@ export function BillingV2Module() {
             </tbody></table>
           </div>
         </Card>
+        </>
       ) : (
         <>
           <Card className="p-5">
