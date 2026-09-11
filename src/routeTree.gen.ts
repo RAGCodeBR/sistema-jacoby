@@ -25,6 +25,7 @@ import { Route as AppTasksRouteImport } from './routes/_app/tasks'
 import { Route as AppTerceirizadosRouteImport } from './routes/_app/terceirizados'
 import { Route as AppTrashRouteImport } from './routes/_app/trash'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as ApiOnedriveRouteImport } from './routes/api/onedrive'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
@@ -38,6 +39,7 @@ import { Route as AppTasksIndexRouteImport } from './routes/_app/tasks.index'
 import { Route as AppTasksCalendarRouteImport } from './routes/_app/tasks.calendar'
 import { Route as AppTasksKanbanRouteImport } from './routes/_app/tasks.kanban'
 import { Route as AppTasksListRouteImport } from './routes/_app/tasks.list'
+import { Route as ApiOnedriveCallbackRouteImport } from './routes/api/onedrive.callback'
 import { Route as AppClientsClientIdEditRouteImport } from './routes/_app/clients.$clientId.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -119,6 +121,11 @@ const AppUsersRoute = AppUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiOnedriveRoute = ApiOnedriveRouteImport.update({
+  id: '/api/onedrive',
+  path: '/api/onedrive',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppClientReportClientIdRoute = AppClientReportClientIdRouteImport.update({
   id: '/client-report/$clientId',
   path: '/client-report/$clientId',
@@ -184,6 +191,11 @@ const AppTasksListRoute = AppTasksListRouteImport.update({
   path: '/list',
   getParentRoute: () => AppTasksRoute,
 } as any)
+const ApiOnedriveCallbackRoute = ApiOnedriveCallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
+  getParentRoute: () => ApiOnedriveRoute,
+} as any)
 const AppClientsClientIdEditRoute = AppClientsClientIdEditRouteImport.update({
   id: '/$clientId/edit',
   path: '/$clientId/edit',
@@ -206,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/terceirizados': typeof AppTerceirizadosRoute
   '/trash': typeof AppTrashRoute
   '/users': typeof AppUsersRoute
+  '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
   '/portal/conta': typeof AppPortalContaRoute
@@ -217,6 +230,7 @@ export interface FileRoutesByFullPath {
   '/tasks/calendar': typeof AppTasksCalendarRoute
   '/tasks/kanban': typeof AppTasksKanbanRoute
   '/tasks/list': typeof AppTasksListRoute
+  '/api/onedrive/callback': typeof ApiOnedriveCallbackRoute
   '/clients/': typeof AppClientsIndexRoute
   '/tasks/': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
@@ -235,6 +249,7 @@ export interface FileRoutesByTo {
   '/terceirizados': typeof AppTerceirizadosRoute
   '/trash': typeof AppTrashRoute
   '/users': typeof AppUsersRoute
+  '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
   '/portal/conta': typeof AppPortalContaRoute
@@ -246,6 +261,7 @@ export interface FileRoutesByTo {
   '/tasks/calendar': typeof AppTasksCalendarRoute
   '/tasks/kanban': typeof AppTasksKanbanRoute
   '/tasks/list': typeof AppTasksListRoute
+  '/api/onedrive/callback': typeof ApiOnedriveCallbackRoute
   '/clients': typeof AppClientsIndexRoute
   '/tasks': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
@@ -268,6 +284,7 @@ export interface FileRoutesById {
   '/_app/terceirizados': typeof AppTerceirizadosRoute
   '/_app/trash': typeof AppTrashRoute
   '/_app/users': typeof AppUsersRoute
+  '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
   '/_app/portal/conta': typeof AppPortalContaRoute
@@ -279,6 +296,7 @@ export interface FileRoutesById {
   '/_app/tasks/calendar': typeof AppTasksCalendarRoute
   '/_app/tasks/kanban': typeof AppTasksKanbanRoute
   '/_app/tasks/list': typeof AppTasksListRoute
+  '/api/onedrive/callback': typeof ApiOnedriveCallbackRoute
   '/_app/clients/': typeof AppClientsIndexRoute
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
@@ -301,6 +319,7 @@ export interface FileRouteTypes {
     | '/terceirizados'
     | '/trash'
     | '/users'
+    | '/api/onedrive'
     | '/client-report/$clientId'
     | '/clients/new'
     | '/portal/conta'
@@ -312,6 +331,7 @@ export interface FileRouteTypes {
     | '/tasks/calendar'
     | '/tasks/kanban'
     | '/tasks/list'
+    | '/api/onedrive/callback'
     | '/clients/'
     | '/tasks/'
     | '/clients/$clientId/edit'
@@ -330,6 +350,7 @@ export interface FileRouteTypes {
     | '/terceirizados'
     | '/trash'
     | '/users'
+    | '/api/onedrive'
     | '/client-report/$clientId'
     | '/clients/new'
     | '/portal/conta'
@@ -341,6 +362,7 @@ export interface FileRouteTypes {
     | '/tasks/calendar'
     | '/tasks/kanban'
     | '/tasks/list'
+    | '/api/onedrive/callback'
     | '/clients'
     | '/tasks'
     | '/clients/$clientId/edit'
@@ -362,6 +384,7 @@ export interface FileRouteTypes {
     | '/_app/terceirizados'
     | '/_app/trash'
     | '/_app/users'
+    | '/api/onedrive'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
     | '/_app/portal/conta'
@@ -373,6 +396,7 @@ export interface FileRouteTypes {
     | '/_app/tasks/calendar'
     | '/_app/tasks/kanban'
     | '/_app/tasks/list'
+    | '/api/onedrive/callback'
     | '/_app/clients/'
     | '/_app/tasks/'
     | '/_app/clients/$clientId/edit'
@@ -382,6 +406,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiOnedriveRoute: typeof ApiOnedriveRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -498,6 +523,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/onedrive': {
+      id: '/api/onedrive'
+      path: '/api/onedrive'
+      fullPath: '/api/onedrive'
+      preLoaderRoute: typeof ApiOnedriveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/client-report/$clientId': {
       id: '/_app/client-report/$clientId'
       path: '/client-report/$clientId'
@@ -588,6 +620,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/tasks/list'
       preLoaderRoute: typeof AppTasksListRouteImport
       parentRoute: typeof AppTasksRoute
+    }
+    '/api/onedrive/callback': {
+      id: '/api/onedrive/callback'
+      path: '/callback'
+      fullPath: '/api/onedrive/callback'
+      preLoaderRoute: typeof ApiOnedriveCallbackRouteImport
+      parentRoute: typeof ApiOnedriveRoute
     }
     '/_app/clients/$clientId/edit': {
       id: '/_app/clients/$clientId/edit'
@@ -681,10 +720,23 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface ApiOnedriveRouteChildren {
+  ApiOnedriveCallbackRoute: typeof ApiOnedriveCallbackRoute
+}
+
+const ApiOnedriveRouteChildren: ApiOnedriveRouteChildren = {
+  ApiOnedriveCallbackRoute: ApiOnedriveCallbackRoute,
+}
+
+const ApiOnedriveRouteWithChildren = ApiOnedriveRoute._addFileChildren(
+  ApiOnedriveRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiOnedriveRoute: ApiOnedriveRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

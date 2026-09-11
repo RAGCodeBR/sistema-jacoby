@@ -1,56 +1,90 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { Cloud, FileUp, FolderOpen, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Cloud, File, FileUp, FolderOpen, Loader2, Pencil, Plus, ShieldCheck, Trash2, Unplug, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FILES_OWNER_ID } from "@/lib/files-access";
 
 export const Route = createFileRoute("/_app/arquivos")({ component: FilesPage });
 
-function FilesPage() {
-  const { isAdmin, loading, user } = useAuth();
+type OneDriveItem = { id: string; name: string; webUrl: string | null; folder: { childCount?: number } | null; file: { mimeType?: string } | null };
+type Connection = { account_name: string | null; account_email: string | null; connected_at: string } | null;
 
+function FilesPage() {
+  const { isAdmin, loading, user, session } = useAuth();
+  const [connection, setConnection] = useState<Connection>(null);
+  const [items, setItems] = useState<OneDriveItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const request = useCallback(async (method: "GET" | "POST", body?: Record<string, unknown>) => {
+    const folderId = method === "GET" ? body?.folderId : undefined;
+    const response = await fetch(folderId ? `/api/onedrive?folderId=${encodeURIComponent(String(folderId))}` : "/api/onedrive", {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+      body: method === "POST" ? JSON.stringify(body) : undefined,
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(json.error || "Não foi possível acessar o OneDrive.");
+    return json;
+  }, [session?.access_token]);
+
+  const refresh = useCallback(async () => {
+    if (!session?.access_token) return;
+    try {
+      const data = await request("GET", { folderId: folders.at(-1)?.id ?? null });
+      setConnection(data.connection ?? null);
+      setItems(data.items ?? []);
+    } catch (error) { toast.error((error as Error).message); }
+  }, [request, session?.access_token, folders]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Carregando…</div>;
   if (!isAdmin || user?.id !== FILES_OWNER_ID) return <Navigate to="/dashboard" replace />;
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
-      <header>
-        <p className="text-sm font-medium text-primary">Central de documentos</p>
-        <h1 className="text-2xl font-bold tracking-tight">Arquivos</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Acesse as pastas da empresa em um único lugar, com sincronização direta com o OneDrive.
-        </p>
-      </header>
+  const run = async (job: () => Promise<void>) => {
+    setBusy(true);
+    try { await job(); } catch (error) { toast.error((error as Error).message); } finally { setBusy(false); }
+  };
+  const connect = () => run(async () => { const data = await request("POST", { action: "connect" }); window.location.assign(data.url); });
+  const newFolder = () => {
+    const name = window.prompt("Nome da nova pasta:");
+    if (!name?.trim()) return;
+    void run(async () => { await request("POST", { action: "folder", name, parentId: folders.at(-1)?.id ?? null }); await refresh(); toast.success("Pasta criada no OneDrive."); });
+  };
+  const rename = (item: OneDriveItem) => {
+    const name = window.prompt("Novo nome:", item.name);
+    if (!name?.trim() || name === item.name) return;
+    void run(async () => { await request("POST", { action: "rename", itemId: item.id, name }); await refresh(); toast.success("Nome atualizado no OneDrive."); });
+  };
+  const remove = (item: OneDriveItem) => {
+    if (!window.confirm(`Mover “${item.name}” para a lixeira do OneDrive?`)) return;
+    void run(async () => { await request("POST", { action: "delete", itemId: item.id }); await refresh(); toast.success("Item movido para a lixeira do OneDrive."); });
+  };
+  const disconnect = () => {
+    if (!window.confirm("Desconectar o OneDrive do sistema? Os arquivos não serão excluídos.")) return;
+    void run(async () => { await request("POST", { action: "disconnect" }); await refresh(); });
+  };
+  const openFolder = (item: OneDriveItem) => setFolders((current) => [...current, { id: item.id, name: item.name }]);
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) return toast.error("Nesta tela, envie arquivos de até 4 MB.");
+    const base64 = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(",")[1] || ""); reader.onerror = reject; reader.readAsDataURL(file); });
+    await run(async () => { await request("POST", { action: "upload", name: file.name, base64, mimeType: file.type, parentId: folders.at(-1)?.id ?? null }); await refresh(); toast.success("Arquivo enviado ao OneDrive."); });
+  };
 
-      <Card className="overflow-hidden border-primary/20">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b bg-primary/5 p-5">
-          <div className="flex items-start gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary"><Cloud className="h-6 w-6" /></span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">OneDrive</h2><Badge variant="secondary">Aguardando conexão</Badge></div>
-              <p className="mt-1 text-sm text-muted-foreground">Nenhuma conta Microsoft foi vinculada ao sistema ainda.</p>
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-4 p-5 md:grid-cols-3">
-          <Info icon={FolderOpen} title="Pastas e arquivos" description="Navegue pela estrutura real do OneDrive, sem criar cópias no sistema." />
-          <Info icon={FileUp} title="Alterações sincronizadas" description="Envios, renomeações e exclusões feitos aqui também acontecem no OneDrive." />
-          <Info icon={ShieldCheck} title="Exclusão segura" description="Arquivos removidos irão primeiro para a lixeira do OneDrive." />
-        </div>
-      </Card>
-
-      <Card className="p-8 text-center">
-        <FolderOpen className="mx-auto h-9 w-9 text-primary" />
-        <h2 className="mt-3 font-semibold">Conecte o OneDrive para começar</h2>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-          Assim que a conta Microsoft da Jacoby for autorizada, esta tela exibirá suas pastas, arquivos e as ações de criar, enviar, editar, mover e excluir.
-        </p>
-      </Card>
-    </div>
-  );
+  return <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+    <header><p className="text-sm font-medium text-primary">Central de documentos</p><h1 className="text-2xl font-bold tracking-tight">Arquivos</h1><p className="mt-1 text-sm text-muted-foreground">Acesse a estrutura real do OneDrive da empresa sem criar cópias no sistema.</p></header>
+    <Card className="overflow-hidden border-primary/20">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b bg-primary/5 p-5"><div className="flex items-start gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary"><Cloud className="h-6 w-6" /></span><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">OneDrive</h2><Badge variant={connection ? "default" : "secondary"}>{connection ? "Conectado" : "Não conectado"}</Badge></div><p className="mt-1 text-sm text-muted-foreground">{connection ? `Conta vinculada: ${connection.account_email || connection.account_name || "Microsoft"}` : "Conecte a conta Microsoft da Jacoby para começar."}</p></div></div>{connection ? <div className="flex gap-2"><Button variant="outline" onClick={newFolder} disabled={busy}><Plus /> Nova pasta</Button><Button variant="outline" onClick={() => fileInput.current?.click()} disabled={busy}><Upload /> Enviar arquivo</Button><input ref={fileInput} type="file" className="hidden" onChange={(event) => { void upload(event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button variant="ghost" onClick={disconnect} disabled={busy}><Unplug /> Desconectar</Button></div> : <Button onClick={connect} disabled={busy}>{busy ? <Loader2 className="animate-spin" /> : <Cloud />} Conectar OneDrive</Button>}</div>
+      <div className="grid gap-4 p-5 md:grid-cols-3"><Info icon={FolderOpen} title="Pastas e arquivos reais" description="Tudo que aparece aqui vem diretamente do OneDrive." /><Info icon={FileUp} title="Alterações sincronizadas" description="Pastas, nomes e exclusões feitos aqui refletem na conta Microsoft." /><Info icon={ShieldCheck} title="Exclusão segura" description="Itens excluídos são enviados primeiro para a lixeira do OneDrive." /></div>
+    </Card>
+    {connection && <Card className="overflow-hidden"><div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">Meus arquivos</h2><p className="text-sm text-muted-foreground">{folders.length ? `Raiz / ${folders.map((folder) => folder.name).join(" / ")}` : "Raiz do OneDrive"}</p></div><div className="flex gap-2">{folders.length > 0 && <Button size="sm" variant="outline" onClick={() => setFolders((current) => current.slice(0, -1))} disabled={busy}><ArrowLeft /> Voltar</Button>}<Button size="sm" variant="outline" onClick={() => void refresh()} disabled={busy}>Atualizar</Button></div></div>{items.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">Nenhum arquivo ou pasta neste local.</div> : <div className="divide-y">{items.map((item) => <div key={item.id} className="flex items-center gap-3 p-4 hover:bg-muted/30"><span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">{item.folder ? <FolderOpen className="h-5 w-5" /> : <File className="h-5 w-5" />}</span><button className="min-w-0 flex-1 text-left" onClick={() => item.folder ? openFolder(item) : item.webUrl && window.open(item.webUrl, "_blank", "noopener,noreferrer")}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.folder ? `${item.folder.childCount ?? 0} itens` : item.file?.mimeType || "Arquivo"}</p></button><div className="flex gap-1"><Button variant="ghost" size="icon" title="Renomear" onClick={() => rename(item)} disabled={busy}><Pencil /></Button><Button variant="ghost" size="icon" title="Excluir" onClick={() => remove(item)} disabled={busy} className="text-destructive hover:text-destructive"><Trash2 /></Button></div></div>)}</div>}</Card>}
+  </div>;
 }
 
-function Info({ icon: Icon, title, description }: { icon: typeof FolderOpen; title: string; description: string }) {
-  return <div className="rounded-xl border bg-card p-4"><Icon className="h-5 w-5 text-primary" /><h3 className="mt-3 font-medium">{title}</h3><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>;
-}
+function Info({ icon: Icon, title, description }: { icon: typeof FolderOpen; title: string; description: string }) { return <div className="rounded-xl border bg-card p-4"><Icon className="h-5 w-5 text-primary" /><h3 className="mt-3 font-medium">{title}</h3><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>; }
