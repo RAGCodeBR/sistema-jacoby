@@ -48,7 +48,13 @@ function useTheme() {
   return { theme, toggle: () => setTheme((t) => (t === "dark" ? "light" : "dark")) };
 }
 
-type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
+  tab?: "faturamento2" | "configuracoes";
+};
 const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks },
@@ -57,6 +63,8 @@ const allNav: readonly NavItem[] = [
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
   { to: "/portal/documentos", label: "Documentos", icon: FileText },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
+  { to: "/portal/residuos", label: "Faturamento", icon: Recycle, adminOnly: true, tab: "faturamento2" },
+  { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, adminOnly: true, tab: "configuracoes" },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2 },
   { to: "/settings", label: "Personalizar", icon: Settings },
@@ -73,6 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/reports": "reports",
       "/portal/documentos": "portal",
       "/portal": "portal",
+      "/portal/residuos": "portal",
       "/calendario": "calendar",
       "/users": "users",
       "/trash": "trash",
@@ -101,6 +110,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const activeWasteTab = useRouterState({
     select: (s) => (s.location.search as { aba?: string }).aba,
   });
+  const portalActive =
+    pathname === "/portal/unidades" ||
+    pathname === "/portal/conta" ||
+    (pathname === "/portal/residuos" && activeWasteTab === "relatorios");
   const initials = (profile?.full_name || user?.email || "?").slice(0, 2).toUpperCase();
 
   return (
@@ -148,57 +161,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           {nav.map((n) => {
             if (n.to === "/portal")
               return (
-                <div key={n.to} className="space-y-1">
-                  <PortalNavGroup
-                    expanded={sidebarOpen}
-                    active={pathname.startsWith("/portal/")}
-                    isAdmin={isAdmin}
-                    isClient={isClient}
-                  />
-                  {isAdmin && (
-                    <>
-                      <Link
-                        to="/portal/residuos"
-                        search={{ aba: "faturamento2" }}
-                        className={`flex items-center gap-3 rounded-lg transition ${
-                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
-                        } ${
-                          pathname === "/portal/residuos" && activeWasteTab === "faturamento2"
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                        }`}
-                        title="Faturamento"
-                      >
-                        <Recycle className="h-4 w-4 shrink-0" />
-                        {sidebarOpen && <span className="truncate">Faturamento</span>}
-                      </Link>
-                      <Link
-                        to="/portal/residuos"
-                        search={{ aba: "configuracoes" }}
-                        className={`flex items-center gap-3 rounded-lg transition ${
-                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
-                        } ${
-                          pathname === "/portal/residuos" && activeWasteTab === "configuracoes"
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                        }`}
-                        title="Configurações de movimentação"
-                      >
-                        <Settings className="h-4 w-4 shrink-0" />
-                        {sidebarOpen && (
-                          <span className="truncate">Configurações de movimentação</span>
-                        )}
-                      </Link>
-                    </>
-                  )}
-                </div>
+                <PortalNavGroup expanded={sidebarOpen} active={portalActive} isClient={isClient} />
               );
-            const Active = pathname === n.to || pathname.startsWith(n.to + "/");
+            const Active = n.tab
+              ? pathname === n.to && activeWasteTab === n.tab
+              : pathname === n.to || pathname.startsWith(n.to + "/");
             const Icon = n.icon;
             return (
               <Link
                 key={n.to}
                 to={n.to}
+                search={n.tab ? { aba: n.tab } : undefined}
                 className={`flex items-center gap-3 rounded-lg transition ${
                   sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
                 } ${
@@ -295,52 +268,22 @@ export function AppShell({ children }: { children: ReactNode }) {
               {nav.map((n) => {
                 if (n.to === "/portal")
                   return (
-                    <div key={n.to} className="space-y-1">
-                      <PortalNavGroup
-                        expanded
-                        active={pathname.startsWith("/portal/")}
-                        isAdmin={isAdmin}
-                        isClient={isClient}
-                        onNavigate={() => setSidebarOpen(false)}
-                      />
-                      {isAdmin && (
-                        <>
-                          <Link
-                            to="/portal/residuos"
-                            search={{ aba: "faturamento2" }}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                              pathname === "/portal/residuos" && activeWasteTab === "faturamento2"
-                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                            }`}
-                          >
-                            <Recycle className="h-4 w-4" />
-                            Faturamento
-                          </Link>
-                          <Link
-                            to="/portal/residuos"
-                            search={{ aba: "configuracoes" }}
-                            onClick={() => setSidebarOpen(false)}
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                              pathname === "/portal/residuos" && activeWasteTab === "configuracoes"
-                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                            }`}
-                          >
-                            <Settings className="h-4 w-4" />
-                            Configurações de movimentação
-                          </Link>
-                        </>
-                      )}
-                    </div>
+                    <PortalNavGroup
+                      expanded
+                      active={portalActive}
+                      isClient={isClient}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
                   );
-                const Active = pathname === n.to || pathname.startsWith(n.to + "/");
+                const Active = n.tab
+                  ? pathname === n.to && activeWasteTab === n.tab
+                  : pathname === n.to || pathname.startsWith(n.to + "/");
                 const Icon = n.icon;
                 return (
                   <Link
                     key={n.to}
                     to={n.to}
+                    search={n.tab ? { aba: n.tab } : undefined}
                     onClick={() => setSidebarOpen(false)}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
                       Active
@@ -410,13 +353,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 function PortalNavGroup({
   expanded,
   active,
-  isAdmin,
   isClient,
   onNavigate,
 }: {
   expanded: boolean;
   active: boolean;
-  isAdmin: boolean;
   isClient: boolean;
   onNavigate?: () => void;
 }) {
