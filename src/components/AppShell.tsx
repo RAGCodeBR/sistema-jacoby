@@ -11,6 +11,7 @@ import {
   ListChecks,
   Users,
   Building2,
+  Factory,
   Settings,
   LogOut,
   Moon,
@@ -59,7 +60,7 @@ const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks },
   { to: "/clients", label: "Clientes", icon: Building2 },
-  { to: "/terceirizados", label: "Terceirizados", icon: Building2, adminOnly: true },
+  { to: "/terceirizados", label: "Terceirizados", icon: Factory, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
   { to: "/portal/documentos", label: "Documentos", icon: FileText },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
@@ -177,7 +178,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 } ${
                   Active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                 }`}
                 title={n.label}
               >
@@ -288,7 +289,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
                       Active
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                     }`}
                   >
                     <Icon className="h-4 w-4" />
@@ -362,12 +363,12 @@ function PortalNavGroup({
   onNavigate?: () => void;
 }) {
   const item =
-    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground";
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
     return (
       <div
         title="Portal do Cliente"
-        className={`flex justify-center rounded-lg px-2 py-2 ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70"}`}
+        className={`flex justify-center rounded-lg px-2 py-2 ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground"}`}
       >
         <PanelsTopLeft className="h-4 w-4" />
       </div>
@@ -375,7 +376,7 @@ function PortalNavGroup({
   return (
     <Collapsible defaultOpen={active} className="space-y-1">
       <CollapsibleTrigger
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"}`}
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent/50"}`}
       >
         <PanelsTopLeft className="h-4 w-4" />
         <span className="flex-1 text-left">Portal do Cliente</span>
