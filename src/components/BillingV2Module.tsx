@@ -627,8 +627,8 @@ export function BillingV2Module() {
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.text(`Período: ${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(`BOLETIM ${bulletinNumber(cycle.bulletin_number)}`, 105, 28, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 34, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(cycle.bulletin_number)}`, 105, 29, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 38, { align: "center" });
       doc.setFillColor(236, 246, 228); doc.roundedRect(14, 51, 182, 11, 2, 2, "F");
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
       doc.text(`NOTA FISCAL SERÁ EMITIDA PELA ${cycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`, 105, 58, { align: "center" });
