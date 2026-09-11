@@ -55,6 +55,7 @@ const allNav: readonly NavItem[] = [
   { to: "/clients", label: "Clientes", icon: Building2 },
   { to: "/terceirizados", label: "Terceirizados", icon: Building2, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
+  { to: "/portal/documentos", label: "Documentos", icon: FileText },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2 },
@@ -70,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       "/clients": "clients",
       "/terceirizados": "clients",
       "/reports": "reports",
+      "/portal/documentos": "portal",
       "/portal": "portal",
       "/calendario": "calendar",
       "/users": "users",
@@ -186,20 +188,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                         {sidebarOpen && (
                           <span className="truncate">Configurações de movimentação</span>
                         )}
-                      </Link>
-                      <Link
-                        to="/portal/documentos"
-                        className={`flex items-center gap-3 rounded-lg transition ${
-                          sidebarOpen ? "px-3 py-2 text-sm" : "justify-center px-2 py-2 text-sm"
-                        } ${
-                          pathname === "/portal/documentos"
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                        }`}
-                        title="Documentos"
-                      >
-                        <FileText className="h-4 w-4 shrink-0" />
-                        {sidebarOpen && <span className="truncate">Documentos</span>}
                       </Link>
                     </>
                   )}
@@ -343,18 +331,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                             <Settings className="h-4 w-4" />
                             Configurações de movimentação
                           </Link>
-                          <Link
-                            to="/portal/documentos"
-                            onClick={() => setSidebarOpen(false)}
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                              pathname === "/portal/documentos"
-                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                            }`}
-                          >
-                            <FileText className="h-4 w-4" />
-                            Documentos
-                          </Link>
                         </>
                       )}
                     </div>
@@ -477,12 +453,6 @@ function PortalNavGroup({
         >
           Relatórios
         </Link>
-        {!isAdmin && (
-          <Link to="/portal/documentos" onClick={onNavigate} className={item}>
-            <FileText className="h-4 w-4" />
-            Documentos
-          </Link>
-        )}
         {isClient && (
           <Link to="/portal/conta" onClick={onNavigate} className={item}>
             <KeyRound className="h-4 w-4" />
