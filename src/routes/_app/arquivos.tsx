@@ -11,9 +11,9 @@ import { FILES_OWNER_ID } from "@/lib/files-access";
 
 export const Route = createFileRoute("/_app/arquivos")({ component: FilesPage });
 
-type OneDriveItem = { id: string; name: string; webUrl: string | null; folder: { childCount?: number } | null; file: { mimeType?: string } | null };
+type OneDriveItem = { id: string; name: string; webUrl: string | null; size?: number | null; folder: { childCount?: number } | null; file: { mimeType?: string } | null };
 type Connection = { account_name: string | null; account_email: string | null; connected_at: string } | null;
-type Preview = { name: string; mimeType: string; url: string } | null;
+type Preview = { itemId: string; name: string; mimeType: string; url: string; downloadOnly?: boolean } | null;
 
 function FilesPage() {
   const { isAdmin, loading, user, session } = useAuth();
@@ -80,17 +80,45 @@ function FilesPage() {
     const base64 = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(",")[1] || ""); reader.onerror = reject; reader.readAsDataURL(file); });
     await run(async () => { await request("POST", { action: "upload", name: file.name, base64, mimeType: file.type, parentId: folders.at(-1)?.id ?? null }); await refresh(); toast.success("Arquivo enviado ao OneDrive."); });
   };
+  const isPreviewable = (item: OneDriveItem) => {
+    const name = item.name.toLowerCase();
+    const mime = item.file?.mimeType || "";
+    return mime === "application/pdf" || mime.startsWith("image/") || mime.startsWith("text/") || mime.includes("json") || /\.(pdf|png|jpe?g|gif|webp|svg|txt|csv|json|md)$/i.test(name);
+  };
   const previewItem = (item: OneDriveItem) => {
+    const mimeType = item.file?.mimeType || "application/octet-stream";
+    if (!isPreviewable(item)) {
+      setPreview({ itemId: item.id, name: item.name, mimeType, url: "", downloadOnly: true });
+      return;
+    }
+    if ((item.size ?? 0) > 20 * 1024 * 1024) {
+      toast.error("Para não travar o sistema, a prévia está limitada a arquivos de até 20 MB. Use o download para este arquivo.");
+      setPreview({ itemId: item.id, name: item.name, mimeType, url: "", downloadOnly: true });
+      return;
+    }
     void run(async () => {
       const response = await fetch(`/api/onedrive/content/${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || "Não foi possível abrir o arquivo."); }
       const mimeType = response.headers.get("content-type") || item.file?.mimeType || "application/octet-stream";
       const url = URL.createObjectURL(await response.blob());
-      setPreview({ name: item.name, mimeType, url });
+      setPreview({ itemId: item.id, name: item.name, mimeType, url });
     });
   };
-  const downloadPreview = () => {
+  const downloadPreview = async () => {
     if (!preview) return;
+    if (!preview.url) {
+      const item = items.find((candidate) => candidate.id === preview.itemId);
+      if (!item) return;
+      const response = await fetch(`/api/onedrive/content/${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || "Não foi possível baixar o arquivo."); }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = preview.name;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
     const link = document.createElement("a");
     link.href = preview.url;
     link.download = preview.name;
@@ -104,7 +132,7 @@ function FilesPage() {
       <div className="grid gap-4 p-5 md:grid-cols-3"><Info icon={FolderOpen} title="Pastas e arquivos reais" description="Tudo que aparece aqui vem diretamente do OneDrive." /><Info icon={FileUp} title="Alterações sincronizadas" description="Pastas, nomes e exclusões feitos aqui refletem na conta Microsoft." /><Info icon={ShieldCheck} title="Exclusão segura" description="Itens excluídos são enviados primeiro para a lixeira do OneDrive." /></div>
     </Card>
     {connection && <Card className="overflow-hidden"><div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">Meus arquivos</h2><p className="text-sm text-muted-foreground">{folders.length ? `Raiz / ${folders.map((folder) => folder.name).join(" / ")}` : "Raiz do OneDrive"}</p></div><div className="flex gap-2">{folders.length > 0 && <Button size="sm" variant="outline" onClick={() => setFolders((current) => current.slice(0, -1))} disabled={busy}><ArrowLeft /> Voltar</Button>}<Button size="sm" variant="outline" onClick={() => void refresh()} disabled={busy}>Atualizar</Button></div></div>{items.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">Nenhum arquivo ou pasta neste local.</div> : <div className="divide-y">{items.map((item) => <div key={item.id} className="flex items-center gap-3 p-4 hover:bg-muted/30"><span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">{item.folder ? <FolderOpen className="h-5 w-5" /> : <File className="h-5 w-5" />}</span><button className="min-w-0 flex-1 text-left" onClick={() => item.folder ? openFolder(item) : previewItem(item)}><p className="truncate font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.folder ? `${item.folder.childCount ?? 0} itens` : item.file?.mimeType || "Arquivo"}</p></button><div className="flex gap-1">{!item.folder && <Button variant="ghost" size="icon" title="Visualizar" onClick={() => previewItem(item)} disabled={busy}><Eye /></Button>}<Button variant="ghost" size="icon" title="Renomear" onClick={() => rename(item)} disabled={busy}><Pencil /></Button><Button variant="ghost" size="icon" title="Excluir" onClick={() => remove(item)} disabled={busy} className="text-destructive hover:text-destructive"><Trash2 /></Button></div></div>)}</div>}</Card>}
-    <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}><DialogContent className="h-[85vh] max-w-6xl gap-3 p-4"><DialogHeader><DialogTitle className="pr-8">{preview?.name}</DialogTitle><DialogDescription>Prévia segura pelo sistema Jacoby.</DialogDescription></DialogHeader>{preview && (preview.mimeType.startsWith("image/") ? <div className="grid min-h-0 flex-1 place-items-center overflow-auto rounded-md bg-muted"><img src={preview.url} alt={preview.name} className="max-h-full max-w-full object-contain" /></div> : preview.mimeType === "application/pdf" || preview.mimeType.startsWith("text/") || preview.mimeType.includes("json") ? <iframe title={preview.name} src={preview.url} className="min-h-0 flex-1 rounded-md border" /> : <div className="grid flex-1 place-items-center rounded-md border bg-muted/30 p-8 text-center"><File className="mb-3 h-10 w-10 text-primary" /><div><p className="font-medium">Este formato não possui prévia no navegador.</p><p className="mt-1 text-sm text-muted-foreground">Você pode baixar o arquivo sem entrar no OneDrive.</p><Button className="mt-4" onClick={downloadPreview}><Download /> Baixar arquivo</Button></div></div>)}</DialogContent></Dialog>
+    <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}><DialogContent className="grid h-[85vh] max-w-6xl grid-rows-[auto_minmax(0,1fr)] gap-3 p-4"><DialogHeader><DialogTitle className="pr-8">{preview?.name}</DialogTitle><DialogDescription>{preview?.downloadOnly ? "Este formato pode ser baixado pelo sistema, mas não possui prévia." : "Prévia segura pelo sistema Jacoby."}</DialogDescription></DialogHeader>{preview && (preview.downloadOnly ? <div className="grid h-full min-h-0 place-items-center rounded-md border bg-muted/30 p-8 text-center"><File className="mb-3 h-10 w-10 text-primary" /><div><p className="font-medium">Este formato não possui prévia no navegador.</p><p className="mt-1 text-sm text-muted-foreground">Você pode baixar o arquivo sem entrar no OneDrive.</p><Button className="mt-4" onClick={() => void run(downloadPreview)}><Download /> Baixar arquivo</Button></div></div> : preview.mimeType.startsWith("image/") ? <div className="grid h-full min-h-0 place-items-center overflow-auto rounded-md bg-muted"><img src={preview.url} alt={preview.name} className="max-h-full max-w-full object-contain" /></div> : <iframe title={preview.name} src={preview.url} className="h-full min-h-0 w-full rounded-md border" />)}</DialogContent></Dialog>
   </div>;
 }
 
