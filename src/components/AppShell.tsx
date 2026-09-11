@@ -17,10 +17,8 @@ import {
   Sun,
   PanelLeft,
   PanelRight,
-  NotebookPen,
   BarChart3,
   Trash2,
-  FileUp,
   PanelsTopLeft,
   ChevronDown,
   FileText,
@@ -54,8 +52,6 @@ type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; adminO
 const allNav: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks },
-  { to: "/notes", label: "Anotações", icon: NotebookPen },
-  { to: "/import-ata", label: "Importar Ata", icon: FileUp },
   { to: "/clients", label: "Clientes", icon: Building2 },
   { to: "/terceirizados", label: "Terceirizados", icon: Building2, adminOnly: true },
   { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
@@ -71,8 +67,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     const accessByPath: Record<string, string> = {
       "/dashboard": "dashboard",
       "/tasks": "tasks",
-      "/notes": "notes",
-      "/import-ata": "import_ata",
       "/clients": "clients",
       "/terceirizados": "clients",
       "/reports": "reports",

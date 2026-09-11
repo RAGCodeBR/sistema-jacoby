@@ -18,13 +18,13 @@ import { Archive, KeyRound, Plus, ShieldCheck, User as UserIcon, UserCheck, User
 export const Route = createFileRoute("/_app/users")({ component: UsersPage });
 
 const ACCESS_OPTIONS = [
-  ["dashboard", "Dashboard"], ["tasks", "Tarefas"], ["notes", "Anotações"], ["import_ata", "Importar ata"],
+  ["dashboard", "Dashboard"], ["tasks", "Tarefas"],
   ["clients", "Clientes"], ["reports", "Relatórios"], ["portal", "Portal do cliente"], ["calendar", "Calendário"],
   ["trash", "Lixeira"], ["settings", "Personalizar"],
 ] as const;
 type Role = "admin" | "collaborator" | "client";
 type FormState = { fullName: string; email: string; password: string; role: Role; permissions: string[]; clientId: string };
-const defaults: FormState = { fullName: "", email: "", password: "", role: "collaborator", permissions: ["dashboard", "tasks", "notes"], clientId: "" };
+const defaults: FormState = { fullName: "", email: "", password: "", role: "collaborator", permissions: ["dashboard", "tasks"], clientId: "" };
 const roleLabel: Record<Role, string> = { admin: "Administrador", collaborator: "Colaboradores", client: "Cliente" };
 
 function AccessForm({ value, onChange, includeCredentials = false, passwordRequired = true }: { value: FormState; onChange: (next: FormState) => void; includeCredentials?: boolean; passwordRequired?: boolean }) {
