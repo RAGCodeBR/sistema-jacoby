@@ -41,6 +41,7 @@ import { Route as AppTasksKanbanRouteImport } from './routes/_app/tasks.kanban'
 import { Route as AppTasksListRouteImport } from './routes/_app/tasks.list'
 import { Route as ApiOnedriveCallbackRouteImport } from './routes/api/onedrive.callback'
 import { Route as AppClientsClientIdEditRouteImport } from './routes/_app/clients.$clientId.edit'
+import { Route as ApiOnedriveContentItemIdRouteImport } from './routes/api/onedrive.content.$itemId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -201,6 +202,12 @@ const AppClientsClientIdEditRoute = AppClientsClientIdEditRouteImport.update({
   path: '/$clientId/edit',
   getParentRoute: () => AppClientsRoute,
 } as any)
+const ApiOnedriveContentItemIdRoute =
+  ApiOnedriveContentItemIdRouteImport.update({
+    id: '/content/$itemId',
+    path: '/content/$itemId',
+    getParentRoute: () => ApiOnedriveRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -234,6 +241,7 @@ export interface FileRoutesByFullPath {
   '/clients/': typeof AppClientsIndexRoute
   '/tasks/': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
+  '/api/onedrive/content/$itemId': typeof ApiOnedriveContentItemIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -265,6 +273,7 @@ export interface FileRoutesByTo {
   '/clients': typeof AppClientsIndexRoute
   '/tasks': typeof AppTasksIndexRoute
   '/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
+  '/api/onedrive/content/$itemId': typeof ApiOnedriveContentItemIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -300,6 +309,7 @@ export interface FileRoutesById {
   '/_app/clients/': typeof AppClientsIndexRoute
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/clients/$clientId/edit': typeof AppClientsClientIdEditRoute
+  '/api/onedrive/content/$itemId': typeof ApiOnedriveContentItemIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -335,6 +345,7 @@ export interface FileRouteTypes {
     | '/clients/'
     | '/tasks/'
     | '/clients/$clientId/edit'
+    | '/api/onedrive/content/$itemId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -366,6 +377,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/tasks'
     | '/clients/$clientId/edit'
+    | '/api/onedrive/content/$itemId'
   id:
     | '__root__'
     | '/'
@@ -400,6 +412,7 @@ export interface FileRouteTypes {
     | '/_app/clients/'
     | '/_app/tasks/'
     | '/_app/clients/$clientId/edit'
+    | '/api/onedrive/content/$itemId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -635,6 +648,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientsClientIdEditRouteImport
       parentRoute: typeof AppClientsRoute
     }
+    '/api/onedrive/content/$itemId': {
+      id: '/api/onedrive/content/$itemId'
+      path: '/content/$itemId'
+      fullPath: '/api/onedrive/content/$itemId'
+      preLoaderRoute: typeof ApiOnedriveContentItemIdRouteImport
+      parentRoute: typeof ApiOnedriveRoute
+    }
   }
 }
 
@@ -722,10 +742,12 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface ApiOnedriveRouteChildren {
   ApiOnedriveCallbackRoute: typeof ApiOnedriveCallbackRoute
+  ApiOnedriveContentItemIdRoute: typeof ApiOnedriveContentItemIdRoute
 }
 
 const ApiOnedriveRouteChildren: ApiOnedriveRouteChildren = {
   ApiOnedriveCallbackRoute: ApiOnedriveCallbackRoute,
+  ApiOnedriveContentItemIdRoute: ApiOnedriveContentItemIdRoute,
 }
 
 const ApiOnedriveRouteWithChildren = ApiOnedriveRoute._addFileChildren(

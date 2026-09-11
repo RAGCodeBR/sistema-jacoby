@@ -182,6 +182,16 @@ export async function uploadItem(ownerId: string, name: string, content: Uint8Ar
   return json;
 }
 
+export async function getItemContent(ownerId: string, itemId: string) {
+  const token = await accessToken(ownerId);
+  const response = await fetch(`${GRAPH}/me/drive/items/${encodeURIComponent(itemId)}/content`, { headers: { Authorization: `Bearer ${token}` }, redirect: "follow" });
+  if (!response.ok) {
+    const json = await response.json().catch(() => ({}));
+    throw new Error(json?.error?.message || "Não foi possível carregar o arquivo.");
+  }
+  return response;
+}
+
 export async function disconnectOneDrive(ownerId: string) {
   await assertFilesOwner(ownerId);
   const { error } = await (supabaseAdmin.from("onedrive_connections" as any) as any).delete().eq("owner_id", ownerId);
