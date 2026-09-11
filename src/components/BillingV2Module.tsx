@@ -1,7 +1,7 @@
-/** Faturamento 2: fluxo mensal independente, espelhando o boletim operacional. */
+/** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FilePlus2, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, FilePlus2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,9 +36,12 @@ type Cycle = {
   status: string;
   issuer_type: "jacoby" | "outsourced";
   outsourced_company_id: string | null;
+  bulletin_number: number;
+  finalized_at: string | null;
 };
 type Placement = {
   id: string;
+  cycle_id: string | null;
   branch_id: string;
   equipment_id: string;
   waste_residue_id: string | null;
@@ -93,10 +96,7 @@ const money = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
 const number = (value: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0);
-const monthBounds = (month: string) => {
-  const [year, index] = month.split("-").map(Number);
-  return { start: `${month}-01`, end: new Date(year, index, 0).toISOString().slice(0, 10) };
-};
+const bulletinNumber = (value?: number | null) => `#${String(value || 0).padStart(3, "0")}`;
 const equipmentName = (item?: Equipment) =>
   item
     ? [item.identification, item.name, item.equipment_type].filter(Boolean).join(" · ")
@@ -126,7 +126,8 @@ export function BillingV2Module() {
   const qc = useQueryClient();
   const { data: clients = [] } = useClients();
   const [clientId, setClientId] = useState("");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [periodStart, setPeriodStart] = useState(new Date().toISOString().slice(0, 10));
+  const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().slice(0, 10));
   const [cycleId, setCycleId] = useState("");
   const [tab, setTab] = useState("locacoes");
   const [placementForm, setPlacementForm] = useState({
@@ -152,7 +153,6 @@ export function BillingV2Module() {
   const [ratesForm, setRatesForm] = useState({ exchange: "0", treatment: "0" });
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
-  const bounds = monthBounds(month);
 
   useEffect(() => {
     if (!clientId && clients[0]) setClientId(clients[0].id);
@@ -168,7 +168,7 @@ export function BillingV2Module() {
       },
     });
   const cyclesQuery = query<Cycle>(["billing-v2-cycles", clientId], "billing_v2_cycles", (q) =>
-    q.select("*").eq("client_id", clientId).order("period_start", { ascending: false }),
+    q.select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
   );
   const branchesQuery = query<Branch>(["billing-v2-branches", clientId], "client_branches", (q) =>
     q.select("id,name,cnpj,address").eq("client_id", clientId).eq("is_active", true).order("name"),
@@ -222,14 +222,12 @@ export function BillingV2Module() {
   });
   const cycle = (cyclesQuery.data || []).find((item) => item.id === cycleId);
   const placementsQuery = useQuery({
-    queryKey: ["billing-v2-placements", clientId, bounds.end],
-    enabled: Boolean(clientId),
+    queryKey: ["billing-v2-placements", cycleId],
+    enabled: Boolean(cycleId),
     queryFn: async () => {
       const { data, error } = await (supabase.from("billing_v2_placements" as any) as any)
         .select("*")
-        .eq("client_id", clientId)
-        .lte("started_on", bounds.end)
-        .or(`ended_on.is.null,ended_on.gt.${bounds.end}`)
+        .eq("cycle_id", cycleId)
         .order("started_on");
       if (error) throw error;
       return (data || []) as Placement[];
@@ -303,18 +301,10 @@ export function BillingV2Module() {
   const openCycle = useMutation({
     mutationFn: async () => {
       if (!clientId) throw Error("Selecione um cliente.");
-      const { start, end } = monthBounds(month);
-      const { data: existing, error: findError } = await (
-        supabase.from("billing_v2_cycles" as any) as any
-      )
-        .select("id")
-        .eq("client_id", clientId)
-        .eq("period_start", start)
-        .maybeSingle();
-      if (findError) throw findError;
-      if (existing) return existing.id as string;
+      if (!periodStart || !periodEnd || periodEnd < periodStart)
+        throw Error("Informe um intervalo de datas válido para o boletim.");
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
-        .insert({ client_id: clientId, period_start: start, period_end: end })
+        .insert({ client_id: clientId, period_start: periodStart, period_end: periodEnd })
         .select("id")
         .single();
       if (error) throw error;
@@ -323,19 +313,20 @@ export function BillingV2Module() {
     onSuccess: (id) => {
       setCycleId(id);
       qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
-      toast.success("Competência aberta para edição.");
+      setTab("locacoes");
+      toast.success("Novo boletim aberto para edição.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["billing-v2-placements", clientId] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-placements", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-rates", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-cycle-services", cycleId] });
   };
   const saveIssuer = useMutation({
     mutationFn: async ({ issuerType, companyId }: { issuerType: "jacoby" | "outsourced"; companyId: string }) => {
-      if (!cycleId) throw Error("Abra a competência antes de definir o emissor.");
+      if (!cycleId) throw Error("Abra um boletim antes de definir o emissor.");
       if (issuerType === "outsourced" && !companyId) throw Error("Selecione a empresa terceirizada emissora.");
       const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .update({ issuer_type: issuerType, outsourced_company_id: issuerType === "outsourced" ? companyId : null })
@@ -368,9 +359,10 @@ export function BillingV2Module() {
   };
   const addPlacement = useMutation({
     mutationFn: async () => {
-      if (!placementForm.branchId || !placementForm.equipmentId)
-        throw Error("Informe filial/pátio e equipamento.");
+      if (!cycleId || !placementForm.branchId || !placementForm.equipmentId)
+        throw Error("Abra um boletim e informe filial/pátio e equipamento.");
       const { error } = await (supabase.from("billing_v2_placements" as any) as any).insert({
+        cycle_id: cycleId,
         client_id: clientId,
         branch_id: placementForm.branchId,
         equipment_id: placementForm.equipmentId,
@@ -398,7 +390,7 @@ export function BillingV2Module() {
   const addMovement = useMutation({
     mutationFn: async () => {
       if (!cycleId || !movementForm.branchId)
-        throw Error("Abra a competência e informe a filial/pátio.");
+        throw Error("Abra um boletim e informe a filial/pátio.");
       const removed = Number(movementForm.removed || 0);
       if (removed > 0 && !movementForm.equipmentId)
         throw Error("Selecione o equipamento removido.");
@@ -423,6 +415,7 @@ export function BillingV2Module() {
           supabase.from("billing_v2_placements" as any) as any
         )
           .select("id,quantity,started_on,monthly_rental_rate,waste_residue_id,observation")
+          .eq("cycle_id", cycleId)
           .eq("client_id", clientId)
           .eq("branch_id", movementForm.branchId)
           .eq("equipment_id", movementForm.equipmentId)
@@ -454,6 +447,7 @@ export function BillingV2Module() {
           const { error: replacementError } = await (
             supabase.from("billing_v2_placements" as any) as any
           ).insert({
+            cycle_id: cycleId,
             client_id: clientId,
             branch_id: movementForm.branchId,
             equipment_id: movementForm.replacementEquipmentId,
@@ -486,7 +480,7 @@ export function BillingV2Module() {
   });
   const saveRates = useMutation({
     mutationFn: async () => {
-      if (!cycleId) throw Error("Abra a competência antes de definir os valores.");
+      if (!cycleId) throw Error("Abra um boletim antes de definir os valores.");
       const { error } = await (supabase.from("billing_v2_rates" as any) as any).upsert(
         {
           cycle_id: cycleId,
@@ -503,11 +497,48 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const finalizeCycle = useMutation({
+    mutationFn: async () => {
+      if (!cycleId) throw Error("Abra um boletim antes de finalizá-lo.");
+      const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .update({ status: "closed", finalized_at: new Date().toISOString() })
+        .eq("id", cycleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      toast.success("Boletim finalizado. Ele continuará disponível para edição e reimpressão.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const remove = async (table: string, id: string) => {
     if (!confirm("Excluir este lançamento?") || !id) return;
     const { error } = await (supabase.from(table as any) as any).delete().eq("id", id);
     if (error) toast.error(error.message);
     else refresh();
+  };
+  const deleteCycle = async (item: Cycle) => {
+    const accepted = confirm(
+      `Excluir o boletim ${bulletinNumber(item.bulletin_number)}?\n\nSerão excluídos permanentemente as locações, movimentações, trocas, valores e serviços deste boletim. Os demais boletins do cliente não serão alterados.`,
+    );
+    if (!accepted) return;
+    const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+      .delete()
+      .eq("id", item.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (cycleId === item.id) {
+      setCycleId("");
+      setTab("historico");
+    }
+    qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-placements", item.id] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-movements", item.id] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-rates", item.id] });
+    qc.invalidateQueries({ queryKey: ["billing-v2-cycle-services", item.id] });
+    toast.success(`Boletim ${bulletinNumber(item.bulletin_number)} excluído.`);
   };
   const fixedRates = {
     rental_rate: Number(clientSettingsQuery.data?.rental_rate || 0),
@@ -528,7 +559,7 @@ export function BillingV2Module() {
   }, [placements, movements, cycleServices, fixedRates.exchange_rate, fixedRates.treatment_rate]);
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
   const branch = (id: string) => branches.find((item) => item.id === id);
-  const openCycles = (cyclesQuery.data || []).filter((item) => item.status === "draft");
+  const clientCycles = cyclesQuery.data || [];
   const issuerCompany = outsourcedCompanies.find((company) => company.id === cycle?.outsourced_company_id);
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
     cycleServices.some((service) => service.outsourced_company_id === company.id),
@@ -571,6 +602,7 @@ export function BillingV2Module() {
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.text(`Período: ${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(`BOLETIM ${bulletinNumber(cycle.bulletin_number)}`, 105, 28, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 34, { align: "center" });
       doc.setFillColor(236, 246, 228); doc.roundedRect(14, 51, 182, 11, 2, 2, "F");
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
@@ -675,7 +707,7 @@ export function BillingV2Module() {
       doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 20, 283);
       doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
     }
-    doc.save(`demonstrativo-${clientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-${cycle.period_start}.pdf`);
+    doc.save(`boletim-${bulletinNumber(cycle.bulletin_number).replace("#", "")}-${clientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
   };
 
   return (
@@ -684,7 +716,7 @@ export function BillingV2Module() {
         <p className="text-sm font-medium text-primary">Portal do Cliente</p>
         <h1 className="text-2xl font-bold">Faturamento</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Novo fluxo mensal baseado no boletim: locação, troca e tratamento por kg.
+          Cada boletim é um ciclo independente: registre locação, movimentações e destinação no período que fizer sentido e finalize quando estiver concluído.
         </p>
       </header>
       <Card className="grid gap-3 p-4 md:grid-cols-4">
@@ -708,85 +740,67 @@ export function BillingV2Module() {
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Competência">
+        <Field label="Início do boletim">
           <Input
-            type="month"
-            value={month}
+            type="date"
+            value={periodStart}
             onChange={(event) => {
-              setMonth(event.target.value);
-              setCycleId("");
+              setPeriodStart(event.target.value);
             }}
           />
         </Field>
-        <Field label="Competências abertas">
-          <Select
-            value={cycleId || "new"}
-            onValueChange={(value) => {
-              if (value === "new") {
-                setCycleId("");
-                return;
-              }
-              const selectedCycle = openCycles.find((item) => item.id === value);
-              if (!selectedCycle) return;
-              setCycleId(selectedCycle.id);
-              setMonth(selectedCycle.period_start.slice(0, 7));
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecionar competência" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="new">Nova competência</SelectItem>
-              {openCycles.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(
-                    new Date(`${item.period_start}T12:00:00`),
-                  )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Field label="Fim do boletim">
+          <Input type="date" value={periodEnd} min={periodStart} onChange={(event) => setPeriodEnd(event.target.value)} />
         </Field>
         <Button className="self-end" onClick={() => openCycle.mutate()}>
           <FilePlus2 className="mr-2 h-4 w-4" />
-          {cycleId ? "Abrir competência" : "Criar ou abrir competência"}
+          Criar novo boletim
         </Button>
       </Card>
       {!cycleId ? (
-        <Card className="p-6 text-sm text-muted-foreground">
-          Selecione o cliente, a competência e clique em “Criar ou abrir competência”. O faturamento
-          atual permanece separado.
+        <Card className="p-5">
+          <h2 className="font-semibold">Boletins do cliente</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Abra qualquer boletim para continuar a edição, mesmo depois de finalizado.</p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
+              {clientCycles.length ? clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para este cliente.</td></tr>}
+            </tbody></table>
+          </div>
         </Card>
       ) : (
         <>
-          <Card className="grid gap-3 p-4 md:grid-cols-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Cliente</p>
-              <p className="font-semibold">{clientName}</p>
+          <Card className="p-5">
+            <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="lg:text-center">
+                <p className="text-xs text-muted-foreground">Cliente</p>
+                <p className="font-semibold">{clientName}</p>
+              </div>
+              <div className="lg:text-center">
+                <p className="text-xs text-muted-foreground">Período</p>
+                <p className="font-semibold">{cycle ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</p>
+              </div>
+              <div className="lg:text-center">
+                <p className="text-xs text-muted-foreground">Número do boletim</p>
+                <p className="font-semibold text-primary">{bulletinNumber(cycle?.bulletin_number)}</p>
+              </div>
+              <div className="lg:text-center">
+                <p className="text-xs text-muted-foreground">Total do boletim</p>
+                <p className="font-semibold text-primary">{money(totals.total)}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Período</p>
-              <p className="font-semibold">
-                {new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(
-                  new Date(`${month}-02T12:00:00`),
-                )}
-              </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2 border-t pt-4">
+              <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
+              <Button onClick={() => void generatePdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF</Button>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total do boletim</p>
-              <p className="font-semibold text-primary">{money(totals.total)}</p>
-            </div>
-            <Button variant="outline" className="self-end" onClick={() => void generatePdf()}>
-              <Download className="mr-2 h-4 w-4" />
-              Gerar PDF
-            </Button>
           </Card>
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="h-auto w-full justify-start overflow-x-auto">
+              <TabsTrigger value="historico">Boletins do cliente</TabsTrigger>
               <TabsTrigger value="locacoes">Equipamentos em locação</TabsTrigger>
               <TabsTrigger value="movimentos">Movimentações</TabsTrigger>
               <TabsTrigger value="boletim">Boletim</TabsTrigger>
             </TabsList>
+            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="space-y-4">
               <Card className="p-4">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
@@ -894,7 +908,7 @@ export function BillingV2Module() {
             </TabsContent>
             <TabsContent value="movimentos" className="space-y-4">
               <Card className="p-4">
-                <h2 className="font-semibold">Movimentação da competência</h2>
+                <h2 className="font-semibold">Movimentações do boletim</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   As removidas formam as trocas. Ao informar o equipamento da troca, a locação
                   anterior é encerrada e a nova inicia com o valor fixo do cliente.
@@ -1178,7 +1192,7 @@ function PlacementTable({
             <th className="p-2">Equipamento que entrou</th>
             <th className="p-2">Resíduo</th>
             <th className="p-2">Quantidade</th>
-            <th className="p-2">Locação mensal</th>
+            <th className="p-2">Valor da locação</th>
             <th className="p-2" />
           </tr>
         </thead>
@@ -1210,7 +1224,7 @@ function PlacementTable({
           ) : (
             <tr>
               <td className="p-5 text-center text-muted-foreground" colSpan={7}>
-                Nenhum equipamento em locação nesta competência.
+                Nenhum equipamento em locação neste boletim.
               </td>
             </tr>
           )}
@@ -1240,7 +1254,8 @@ function MovementTable({
             <th className="p-2">Data</th>
             <th className="p-2">OS</th>
             <th className="p-2">Filial/pátio</th>
-            <th className="p-2">Equipamento</th>
+            <th className="p-2">Equipamento que saiu</th>
+            <th className="p-2">Equipamento que entrou</th>
             <th className="p-2">Resíduo</th>
             <th className="p-2">Colocadas</th>
             <th className="p-2">Removidas</th>
@@ -1285,7 +1300,7 @@ function MovementTable({
           ) : (
             <tr>
               <td className="p-5 text-center text-muted-foreground" colSpan={10}>
-                Nenhuma movimentação nesta competência.
+                Nenhuma movimentação neste boletim.
               </td>
             </tr>
           )}
