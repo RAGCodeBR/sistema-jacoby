@@ -29,6 +29,7 @@ type Equipment = {
   name: string;
   equipment_type: string;
   active: boolean;
+  monthly_rental_rate: number;
 };
 type Residue = { id: string; name: string; active: boolean; branch_id: string | null; default_treatment_rate: number };
 type Cycle = {
@@ -283,7 +284,7 @@ export function BillingV2Module() {
     "waste_equipment",
     (q) =>
       q
-        .select("id,branch_id,identification,name,equipment_type,active")
+        .select("id,branch_id,identification,name,equipment_type,active,monthly_rental_rate")
         .eq("client_id", clientId)
         .eq("active", true)
         .order("name"),
@@ -369,11 +370,11 @@ export function BillingV2Module() {
     enabled: Boolean(clientId),
     queryFn: async () => {
       const { data, error } = await (supabase.from("waste_client_billing_settings" as any) as any)
-        .select("exchange_rate,rental_rate")
+        .select("exchange_rate")
         .eq("client_id", clientId)
         .maybeSingle();
       if (error) throw error;
-      return data as { exchange_rate: number; rental_rate: number } | null;
+      return data as { exchange_rate: number } | null;
     },
   });
   const branches = branchesQuery.data || [],
@@ -504,7 +505,7 @@ export function BillingV2Module() {
         waste_residue_id: placementForm.residueId || null,
         started_on: placementForm.date,
         quantity: Number(placementForm.quantity || 0),
-        monthly_rental_rate: Number(clientSettingsQuery.data?.rental_rate || 0),
+        monthly_rental_rate: Number(equipment.find((item) => item.id === placementForm.equipmentId)?.monthly_rental_rate || 0),
         observation: placementForm.observation || null,
       });
       if (error) throw error;
@@ -705,10 +706,7 @@ export function BillingV2Module() {
     qc.invalidateQueries({ queryKey: ["billing-v2-cycle-services", item.id] });
     toast.success(`Boletim ${bulletinNumber(item.bulletin_number)} excluído.`);
   };
-  const fixedRates = {
-    rental_rate: Number(clientSettingsQuery.data?.rental_rate || 0),
-    exchange_rate: Number(clientSettingsQuery.data?.exchange_rate || 0),
-  };
+  const fixedRates = { exchange_rate: Number(clientSettingsQuery.data?.exchange_rate || 0) };
   const calculateTotals = (selectedPlacements: Placement[], selectedMovements: Movement[], selectedServices: CycleService[]) => {
     const confirmedMovements = selectedMovements.filter((item) => item.confirmed);
     const rental = selectedPlacements.reduce(
@@ -1069,8 +1067,7 @@ export function BillingV2Module() {
               <Card className="p-4">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  O valor de locação é fixo por cliente e vem de Configurações de movimentação →
-                  Valores de locação.
+                  O valor de locação é definido no cadastro de cada equipamento deste pátio.
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <Field label="Filial ou pátio">
@@ -1116,6 +1113,9 @@ export function BillingV2Module() {
                       </SelectContent>
                     </Select>
                   </Field>
+                  <div className="self-end pb-2 text-sm text-muted-foreground">
+                    Valor do equipamento: <strong className="text-foreground">{money(Number(equipment.find((item) => item.id === placementForm.equipmentId)?.monthly_rental_rate || 0))}</strong>
+                  </div>
                   <Field label="Resíduo">
                     <Select
                       value={placementForm.residueId}
@@ -1427,7 +1427,7 @@ export function BillingV2Module() {
                 </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <div className="rounded-md border p-3 text-sm">
-                    Locação: <strong>{money(fixedRates.rental_rate)} / equipamento</strong>
+                    Locação: <strong>valor individual de cada equipamento</strong>
                   </div>
                   <div className="rounded-md border p-3 text-sm">
                     Troca: <strong>{money(fixedRates.exchange_rate)}</strong>

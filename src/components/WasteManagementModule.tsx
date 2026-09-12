@@ -54,6 +54,7 @@ type Equipment = {
   category: string;
   plate: string | null;
   active: boolean;
+  monthly_rental_rate: number;
 };
 type EquipmentOption = {
   id: string;
@@ -296,6 +297,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     type: "",
     capacity: "",
     capacityUnit: "m3",
+    rentalRate: "0",
   });
   const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "" });
   const [move, setMove] = useState({
@@ -567,6 +569,8 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         throw Error("Informe veículo/modelo e recipiente.");
       if (hasActiveBranches && !eqForm.branchId)
         throw Error("Selecione a filial ou pátio deste equipamento.");
+      if (!Number.isFinite(Number(eqForm.rentalRate)) || Number(eqForm.rentalRate) < 0)
+        throw Error("Informe um valor de locação válido.");
       const payload = {
         client_id: clientId,
         branch_id: eqForm.branchId || null,
@@ -576,6 +580,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         category: "cacamba",
         capacity_value: eqForm.capacity ? Number(eqForm.capacity) : null,
         capacity_unit: eqForm.capacityUnit,
+        monthly_rental_rate: Number(eqForm.rentalRate || 0),
       };
       const query = supabase.from("waste_equipment" as any) as any;
       const { error } = editingEquipment
@@ -612,6 +617,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         type: "",
         capacity: "",
         capacityUnit: "m3",
+        rentalRate: "0",
       });
       refreshClient();
       refreshEquipmentOptions();
@@ -1611,12 +1617,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               >
                 Troca
               </TabsTrigger>
-              <TabsTrigger
-                value="locacao"
-                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
-              >
-                Valores de locação
-              </TabsTrigger>
             </TabsList>
             <TabsContent value="equipamentos" className="space-y-4">
               <Card className="p-4">
@@ -1627,7 +1627,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   Selecione uma sugestão já cadastrada ou digite uma nova opção. Ao salvar, ela
                   ficará disponível para os próximos cadastros.
                 </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                   <Field label="Filial ou pátio">
                     {branches.some((branch) => branch.is_active) ? (
                       <Select
@@ -1701,6 +1701,16 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       </Select>
                     </div>
                   </Field>
+                  <Field label="Valor da locação">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={eqForm.rentalRate}
+                      onChange={(event) => setEqForm({ ...eqForm, rentalRate: event.target.value })}
+                      placeholder="0,00"
+                    />
+                  </Field>
                   <div className="flex gap-2 self-end">
                     <Button onClick={() => addEquipment.mutate()}>
                       {editingEquipment ? "Salvar" : "Cadastrar"}
@@ -1717,6 +1727,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                             type: "",
                           capacity: "",
                           capacityUnit: "m3",
+                          rentalRate: "0",
                           });
                         }}
                       >
@@ -1727,7 +1738,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
+                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Valor da locação", "Ações"]}
                 rows={equipment
                   .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
                   .map((e) => [
@@ -1735,11 +1746,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   e.identification || "—",
                   e.name,
                   e.equipment_type,
-                  e.capacity_value !== null
+                    e.capacity_value !== null
                     ? `${n(e.capacity_value)} ${capacityUnitLabel(e.capacity_unit)}`
                     : e.capacity_m3 !== null
                       ? `${n(e.capacity_m3)} m³`
                       : "—",
+                  money(Number(e.monthly_rental_rate || 0)),
                   <div className="flex gap-1">
                     <Button
                       size="icon"
@@ -1759,6 +1771,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                                 ? ""
                                 : String(e.capacity_m3),
                           capacityUnit: e.capacity_value !== null ? e.capacity_unit : "m3",
+                          rentalRate: String(Number(e.monthly_rental_rate || 0)),
                         });
                       }}
                     >
@@ -1861,9 +1874,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </TabsContent>
             <TabsContent value="valores" className="space-y-4">
               <ClientMovementPrices clientId={clientId} />
-            </TabsContent>
-            <TabsContent value="locacao" className="space-y-4">
-              <ClientMovementPrices clientId={clientId} mode="rental" />
             </TabsContent>
             {canConfigureMovements && (
               <TabsContent value="configuracoes" className="space-y-4">
@@ -3213,7 +3223,7 @@ function BillingTable({
     </Card>
   );
 }
-function ClientMovementPrices({ clientId, mode = "operations" }: { clientId: string; mode?: "operations" | "rental" }) {
+function ClientMovementPrices({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["waste-client-billing-settings", clientId],
@@ -3227,36 +3237,32 @@ function ClientMovementPrices({ clientId, mode = "operations" }: { clientId: str
       return data as { exchange_rate: number; treatment_rate: number; rental_rate: number } | null;
     },
   });
-  const [form, setForm] = useState({ exchange: "0", rental: "0" });
+  const [form, setForm] = useState({ exchange: "0" });
   useEffect(() => {
-    setForm({ exchange: String(data?.exchange_rate || 0), rental: String(data?.rental_rate || 0) });
+    setForm({ exchange: String(data?.exchange_rate || 0) });
   }, [data]);
   const save = async () => {
     if (!clientId) return;
     const { error } = await (supabase.from("waste_client_billing_settings" as any) as any).upsert(
-      { client_id: clientId, exchange_rate: Number(form.exchange || 0), treatment_rate: Number(data?.treatment_rate || 0), rental_rate: Number(form.rental || 0) },
+      { client_id: clientId, exchange_rate: Number(form.exchange || 0), treatment_rate: Number(data?.treatment_rate || 0), rental_rate: Number(data?.rental_rate || 0) },
       { onConflict: "client_id" },
     );
     if (error) toast.error(error.message);
     else {
-      toast.success(mode === "rental" ? "Valor de locação salvo." : "Valor por troca salvo.");
+      toast.success("Valor por troca salvo.");
       void qc.invalidateQueries({ queryKey: ["waste-client-billing-settings", clientId] });
     }
   };
   return (
     <Card className="max-w-3xl p-4">
-      <h2 className="font-semibold">{mode === "rental" ? "Valor de locação" : "Valor por troca"}</h2>
+      <h2 className="font-semibold">Valor por troca</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        {mode === "rental" ? "Este é o valor mensal de locação aplicado a cada equipamento deste cliente no Faturamento." : "Este valor é aplicado a cada troca confirmada no BM. O tratamento é definido em Resíduos e valores, por filial/pátio."}
+        Este valor é aplicado a cada troca confirmada no BM. A locação é definida individualmente no cadastro de equipamentos; o tratamento é definido em Resíduos e valores, por filial/pátio.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
-        {mode === "operations" && <Field label="Valor fixo por troca">
+        <Field label="Valor fixo por troca">
           <Input type="number" min="0" step="0.01" value={form.exchange} disabled={isLoading} onChange={(event) => setForm({ ...form, exchange: event.target.value })} />
         </Field>
-        }
-        {mode === "rental" && <Field label="Valor mensal por equipamento">
-          <Input type="number" min="0" step="0.01" value={form.rental} disabled={isLoading} onChange={(event) => setForm({ ...form, rental: event.target.value })} />
-        </Field>}
         <Button className="self-end" onClick={() => void save()}>Salvar valores</Button>
       </div>
     </Card>
