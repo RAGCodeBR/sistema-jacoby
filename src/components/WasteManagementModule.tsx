@@ -3038,6 +3038,17 @@ function ResidueBranchConfig({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({ id: "", branchId: "", name: "", treatment: "0" });
+  const currentRows = form.branchId
+    ? residues.filter((residue) => residue.branch_id === form.branchId)
+    : residues.filter((residue) => !residue.branch_id);
+  const configuredNames = new Set(currentRows.map((residue) => residue.name.trim().toLocaleLowerCase()));
+  const inheritedRows = form.branchId
+    ? residues.filter(
+        (residue) =>
+          !residue.branch_id && !configuredNames.has(residue.name.trim().toLocaleLowerCase()),
+      )
+    : [];
+  const knownResidueNames = Array.from(new Set(residues.map((residue) => residue.name))).sort();
   const save = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw Error("Informe o nome do resíduo.");
@@ -3058,7 +3069,7 @@ function ResidueBranchConfig({
       if (error) throw error;
     },
     onSuccess: () => {
-      setForm({ id: "", branchId: "", name: "", treatment: "0" });
+      setForm((current) => ({ id: "", branchId: current.branchId, name: "", treatment: "0" }));
       onSaved();
       toast.success("Resíduo e valor de tratamento salvos.");
     },
@@ -3068,27 +3079,35 @@ function ResidueBranchConfig({
     <>
       <Card className="p-4">
         <h2 className="font-semibold">Resíduo e valor por filial/pátio</h2>
-        <p className="mt-1 text-sm text-muted-foreground">O valor por kg será usado no BM desta empresa apenas quando a movimentação for confirmada.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Escolha o pátio para visualizar e definir seus valores próprios. O valor por kg entra no BM apenas quando a movimentação for confirmada.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <Field label="Filial ou pátio">
-            <Select value={form.branchId || "all"} onValueChange={(value) => setForm({ ...form, branchId: value === "all" ? "" : value })}>
+            <Select value={form.branchId || "all"} onValueChange={(value) => setForm({ id: "", branchId: value === "all" ? "" : value, name: "", treatment: "0" })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="all">Todos os pátios</SelectItem>{branches.filter((branch) => branch.is_active).map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          <Field label="Resíduo"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Lixo comercial" /></Field>
+          <Field label="Resíduo"><><Input list="known-residues" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Lixo comercial" /><datalist id="known-residues">{knownResidueNames.map((name) => <option key={name} value={name} />)}</datalist></></Field>
           <Field label="Tratamento por kg"><Input type="number" min="0" step="0.01" value={form.treatment} onChange={(event) => setForm({ ...form, treatment: event.target.value })} /></Field>
           <Button className="self-end" onClick={() => save.mutate()} disabled={save.isPending}>{form.id ? "Salvar" : "Cadastrar resíduo"}</Button>
         </div>
       </Card>
       <ActionTable
         headers={["Resíduo", "Filial/pátio", "Tratamento/kg", "Ações"]}
-        rows={residues.map((residue) => [
+        rows={[
+          ...currentRows.map((residue) => [
           residue.name,
           branches.find((branch) => branch.id === residue.branch_id)?.name || "Todos os pátios",
           money(residue.default_treatment_rate),
           <Button key={residue.id} variant="ghost" size="sm" onClick={() => setForm({ id: residue.id, branchId: residue.branch_id || "", name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}><Pencil className="mr-2 h-4 w-4" />Editar</Button>,
-        ])}
+          ]),
+          ...inheritedRows.map((residue) => [
+            residue.name,
+            "Valor padrão",
+            money(residue.default_treatment_rate),
+            <Button key={residue.id} variant="outline" size="sm" onClick={() => setForm({ id: "", branchId: form.branchId, name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}>Definir para este pátio</Button>,
+          ]),
+        ]}
       />
     </>
   );
