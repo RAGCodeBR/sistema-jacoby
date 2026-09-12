@@ -114,7 +114,21 @@ type BillingViewState = {
 const storedBillingView = (): BillingViewState => {
   if (typeof window === "undefined") return {};
   try {
-    return JSON.parse(sessionStorage.getItem(billingViewStorageKey) || "{}") as BillingViewState;
+    const saved = JSON.parse(sessionStorage.getItem(billingViewStorageKey) || "{}") as BillingViewState;
+    // Além da memória da aba, mantemos o boletim aberto no endereço. Assim,
+    // se o navegador descarregar a aba em segundo plano, ele volta exatamente
+    // para o mesmo boletim e subaba ao restaurá-la.
+    const addressState = new URLSearchParams(window.location.hash.slice(1));
+    return {
+      ...saved,
+      clientId: addressState.get("cliente") || saved.clientId,
+      periodStart: addressState.get("inicio") || saved.periodStart,
+      periodEnd: addressState.get("fim") || saved.periodEnd,
+      cycleBranchId: addressState.get("patio") || saved.cycleBranchId,
+      cycleId: addressState.get("boletim") || saved.cycleId,
+      tab: addressState.get("subaba") || saved.tab,
+      residueFilterId: addressState.get("residuo") || saved.residueFilterId,
+    };
   } catch {
     return {};
   }
@@ -200,9 +214,28 @@ export function BillingV2Module() {
   }, [billingViewRestored, clientId, clients]);
   useEffect(() => {
     if (!billingViewRestored || typeof window === "undefined") return;
-    sessionStorage.setItem(billingViewStorageKey, JSON.stringify({
+    const view = {
       clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId,
-    } satisfies BillingViewState));
+    } satisfies BillingViewState;
+    sessionStorage.setItem(billingViewStorageKey, JSON.stringify(view));
+
+    // O hash não causa navegação nem nova renderização. Ele é apenas uma
+    // proteção adicional contra o descarte da aba pelo navegador.
+    const url = new URL(window.location.href);
+    if (cycleId) {
+      const state = new URLSearchParams();
+      state.set("cliente", clientId);
+      state.set("inicio", periodStart);
+      state.set("fim", periodEnd);
+      state.set("patio", cycleBranchId);
+      state.set("boletim", cycleId);
+      state.set("subaba", tab);
+      state.set("residuo", residueFilterId);
+      url.hash = state.toString();
+    } else {
+      url.hash = "";
+    }
+    window.history.replaceState(window.history.state, "", url);
   }, [billingViewRestored, clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId]);
   const query = <T,>(key: unknown[], table: string, configure: (request: any) => any) =>
     useQuery({

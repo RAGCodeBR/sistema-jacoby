@@ -58,7 +58,9 @@ export function NotificationBell() {
       poll = window.setInterval(() => void load(), 60_000);
     };
     const onVisibilityChange = () => {
-      if (!document.hidden) void load();
+      // Ao voltar para uma aba aberta, não disparamos uma consulta que força
+      // toda a moldura do sistema a atualizar durante a rolagem. Alterações
+      // novas continuam chegando em tempo real e pelo intervalo normal.
       startPolling();
     };
     void load();

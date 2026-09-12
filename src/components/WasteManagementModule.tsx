@@ -1,7 +1,6 @@
 /** Cadastros do cliente alimentam diretamente o demonstrativo mensal. */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Download, FilePlus2, Package, Pencil, Scale, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,6 +23,10 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { useRouterState } from "@tanstack/react-router";
 import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 import { BillingV2Module } from "@/components/BillingV2Module";
+
+const WasteReportCharts = lazy(() =>
+  import("@/components/WasteReportCharts").then((module) => ({ default: module.WasteReportCharts })),
+);
 
 type Residue = {
   id: string;
@@ -2712,36 +2715,9 @@ function AnnualWasteReport({
           <h2 className="text-xl font-bold">{clientName}</h2>
           <p className="text-sm text-muted-foreground">{periodLabel}</p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="p-4">
-            <h2 className="font-semibold">Resíduos mais movimentados</h2>
-            <p className="mb-3 text-sm text-muted-foreground">Peso total por tipo de resíduo.</p>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={residueData}>
-                  <XAxis dataKey="name" interval={0} angle={-18} textAnchor="end" height={60} />
-                  <YAxis />
-                  <Tooltip formatter={(value: number) => `${n(Number(value))} kg`} />
-                  <Bar dataKey="kg" fill="hsl(var(--primary))" radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <h2 className="font-semibold">Evolução mensal</h2>
-            <p className="mb-3 text-sm text-muted-foreground">Kg movimentados mês a mês.</p>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyData}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip formatter={(value: number) => `${n(Number(value))} kg`} />
-                  <Bar dataKey="kg" fill="#7fb069" radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        </div>
+        <Suspense fallback={<div className="h-64 rounded-lg border bg-card" />}>
+          <WasteReportCharts residueData={residueData} monthlyData={monthlyData} formatWeight={n} />
+        </Suspense>
         <Card className="p-4">
           <h2 className="font-semibold">Resumo dos resíduos</h2>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

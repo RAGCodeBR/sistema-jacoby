@@ -109,7 +109,8 @@ export function AssignmentPopup() {
       poll = window.setInterval(() => void loadFreshAssignments(), 60_000);
     };
     const onVisibilityChange = () => {
-      if (!document.hidden) void loadFreshAssignments();
+      // Evita uma segunda consulta e uma atualização completa da interface
+      // justamente no momento em que o usuário retorna a esta aba.
       startPolling();
     };
 
