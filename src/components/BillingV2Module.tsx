@@ -1259,7 +1259,7 @@ export function BillingV2Module() {
                     />
                   </Field>
                   <div className="md:col-span-4 grid gap-3 md:grid-cols-2">
-                    <Field label="Equipamentos no local">
+                    <Field label="Retirada">
                       <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
                         {!movementForm.branchId ? (
                           <p className="text-sm text-muted-foreground">Selecione primeiro a filial ou pátio.</p>
@@ -1286,7 +1286,7 @@ export function BillingV2Module() {
                         )}
                       </div>
                     </Field>
-                    <Field label="Equipamentos colocados / troca">
+                    <Field label="Colocação">
                       <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
                         {equipment
                           .filter((item) => item.branch_id === movementForm.branchId)
