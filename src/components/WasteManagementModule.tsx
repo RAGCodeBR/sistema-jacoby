@@ -299,8 +299,8 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     capacity: "",
     capacityUnit: "m3",
     rentalRate: "0",
-    exchangeRate: "0",
   });
+  const [exchangeForm, setExchangeForm] = useState({ branchId: "", equipmentId: "", rate: "0" });
   const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "" });
   const [move, setMove] = useState({
     placementOrder: "",
@@ -490,6 +490,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     equipmentOptions.filter((item) => item.option_type === "recipient").map((item) => item.name),
   );
   const activeServices = services.filter((s) => s.active);
+  const equipmentForExchangeScope = equipment.filter((item) =>
+    exchangeForm.branchId === "company" ? !item.branch_id : item.branch_id === exchangeForm.branchId,
+  );
   const outsourcedCompanyForService = (serviceId: string) =>
     outsourcedCompanyServices.find((link) => link.waste_service_id === serviceId)
       ?.outsourced_company_id || "";
@@ -573,8 +576,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         throw Error("Selecione a filial ou pátio deste equipamento.");
       if (!Number.isFinite(Number(eqForm.rentalRate)) || Number(eqForm.rentalRate) < 0)
         throw Error("Informe um valor de locação válido.");
-      if (!Number.isFinite(Number(eqForm.exchangeRate)) || Number(eqForm.exchangeRate) < 0)
-        throw Error("Informe um valor de troca válido.");
       const payload = {
         client_id: clientId,
         branch_id: eqForm.branchId || null,
@@ -585,7 +586,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         capacity_value: eqForm.capacity ? Number(eqForm.capacity) : null,
         capacity_unit: eqForm.capacityUnit,
         monthly_rental_rate: Number(eqForm.rentalRate || 0),
-        exchange_rate: Number(eqForm.exchangeRate || 0),
       };
       const query = supabase.from("waste_equipment" as any) as any;
       const { error } = editingEquipment
@@ -623,12 +623,28 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         capacity: "",
         capacityUnit: "m3",
         rentalRate: "0",
-        exchangeRate: "0",
       });
       refreshClient();
       refreshEquipmentOptions();
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+  const saveExchangeRate = useMutation({
+    mutationFn: async () => {
+      const selectedEquipment = equipment.find((item) => item.id === exchangeForm.equipmentId);
+      if (!selectedEquipment) throw Error("Selecione um equipamento.");
+      if (!Number.isFinite(Number(exchangeForm.rate)) || Number(exchangeForm.rate) < 0)
+        throw Error("Informe um valor de troca válido.");
+      const { error } = await (supabase.from("waste_equipment" as any) as any)
+        .update({ exchange_rate: Number(exchangeForm.rate || 0) })
+        .eq("id", selectedEquipment.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Valor de troca atualizado.");
+      refreshClient();
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
   const addService = useMutation({
     mutationFn: async () => {
@@ -1717,16 +1733,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       placeholder="0,00"
                     />
                   </Field>
-                  <Field label="Valor da troca">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={eqForm.exchangeRate}
-                      onChange={(event) => setEqForm({ ...eqForm, exchangeRate: event.target.value })}
-                      placeholder="0,00"
-                    />
-                  </Field>
                   <div className="flex gap-2 self-end">
                     <Button onClick={() => addEquipment.mutate()}>
                       {editingEquipment ? "Salvar" : "Cadastrar"}
@@ -1744,7 +1750,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                           capacity: "",
                           capacityUnit: "m3",
                           rentalRate: "0",
-                          exchangeRate: "0",
                           });
                         }}
                       >
@@ -1755,7 +1760,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Valor da locação", "Valor da troca", "Ações"]}
+                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Valor da locação", "Ações"]}
                 rows={equipment
                   .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
                   .map((e) => [
@@ -1769,7 +1774,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       ? `${n(e.capacity_m3)} m³`
                       : "—",
                   money(Number(e.monthly_rental_rate || 0)),
-                  money(Number(e.exchange_rate || 0)),
                   <div className="flex gap-1">
                     <Button
                       size="icon"
@@ -1790,7 +1794,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                                 : String(e.capacity_m3),
                           capacityUnit: e.capacity_value !== null ? e.capacity_unit : "m3",
                           rentalRate: String(Number(e.monthly_rental_rate || 0)),
-                          exchangeRate: String(Number(e.exchange_rate || 0)),
                         });
                       }}
                     >
@@ -1892,11 +1895,68 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               <ResidueBranchConfig clientId={clientId} branches={branches} residues={residues} onSaved={refreshClient} />
             </TabsContent>
             <TabsContent value="valores" className="space-y-4">
-              <Card className="max-w-3xl p-4">
+              <Card className="p-4">
                 <h2 className="font-semibold">Valor por troca</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  O valor da troca é definido individualmente em cada equipamento, no Cadastro de equipamentos. Assim, cada filial ou pátio pode ter valores diferentes e o BM usa o valor do equipamento que saiu.
+                  Selecione o pátio ou a empresa sem filial, depois o equipamento. O BM usa este valor quando esse equipamento for retirado em uma troca.
                 </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <Field label="Filial, pátio ou empresa">
+                    <Select
+                      value={exchangeForm.branchId}
+                      onValueChange={(value) => setExchangeForm({ branchId: value, equipmentId: "", rate: "0" })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="company">Empresa sem filial/pátio</SelectItem>
+                        {branches.filter((branch) => branch.is_active).map((branch) => (
+                          <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Equipamento">
+                    <Select
+                      value={exchangeForm.equipmentId}
+                      disabled={!exchangeForm.branchId}
+                      onValueChange={(value) => {
+                        const selected = equipmentForExchangeScope.find((item) => item.id === value);
+                        setExchangeForm({ ...exchangeForm, equipmentId: value, rate: String(Number(selected?.exchange_rate || 0)) });
+                      }}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecionar equipamento" /></SelectTrigger>
+                      <SelectContent>
+                        {equipmentForExchangeScope.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {[item.identification, item.name, item.equipment_type].filter(Boolean).join(" · ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Valor da troca">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      disabled={!exchangeForm.equipmentId}
+                      value={exchangeForm.rate}
+                      onChange={(event) => setExchangeForm({ ...exchangeForm, rate: event.target.value })}
+                    />
+                  </Field>
+                  <Button className="self-end" disabled={!exchangeForm.equipmentId || saveExchangeRate.isPending} onClick={() => saveExchangeRate.mutate()}>
+                    {saveExchangeRate.isPending ? "Salvando..." : "Salvar valor"}
+                  </Button>
+                </div>
+                {exchangeForm.branchId && (
+                  <ActionTable
+                    headers={["Equipamento", "Valor da troca"]}
+                    rows={equipmentForExchangeScope.map((item) => [
+                      [item.identification, item.name, item.equipment_type].filter(Boolean).join(" · "),
+                      money(Number(item.exchange_rate || 0)),
+                    ])}
+                  />
+                )}
               </Card>
             </TabsContent>
             {canConfigureMovements && (
