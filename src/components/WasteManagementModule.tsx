@@ -559,11 +559,14 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   });
   const addEquipment = useMutation({
     mutationFn: async () => {
-      if (!clientId || !eqForm.branchId || !eqForm.name.trim() || !eqForm.type.trim())
-        throw Error("Informe pátio, veículo/modelo e recipiente.");
+      const hasActiveBranches = branches.some((branch) => branch.is_active);
+      if (!clientId || !eqForm.name.trim() || !eqForm.type.trim())
+        throw Error("Informe veículo/modelo e recipiente.");
+      if (hasActiveBranches && !eqForm.branchId)
+        throw Error("Selecione a filial ou pátio deste equipamento.");
       const payload = {
         client_id: clientId,
-        branch_id: eqForm.branchId,
+        branch_id: eqForm.branchId || null,
         identification: eqForm.identification.trim() || null,
         name: eqForm.name.trim(),
         equipment_type: eqForm.type.trim(),
@@ -1623,21 +1626,25 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   <Field label="Filial ou pátio">
-                    <Select
-                      value={eqForm.branchId}
-                      onValueChange={(value) => setEqForm({ ...eqForm, branchId: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecionar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {branches.filter((branch) => branch.is_active).map((branch) => (
-                          <SelectItem key={branch.id} value={branch.id}>
-                            {branch.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {branches.some((branch) => branch.is_active) ? (
+                      <Select
+                        value={eqForm.branchId}
+                        onValueChange={(value) => setEqForm({ ...eqForm, branchId: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {branches.filter((branch) => branch.is_active).map((branch) => (
+                            <SelectItem key={branch.id} value={branch.id}>
+                              {branch.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value="Empresa sem filial/pátio cadastrado" readOnly className="bg-muted/40 text-muted-foreground" />
+                    )}
                   </Field>
                   <Field label="Identificação">
                     <Input
@@ -1721,7 +1728,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 rows={equipment
                   .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
                   .map((e) => [
-                  branches.find((branch) => branch.id === e.branch_id)?.name || "—",
+                  branches.find((branch) => branch.id === e.branch_id)?.name || "Sem filial/pátio",
                   e.identification || "—",
                   e.name,
                   e.equipment_type,
