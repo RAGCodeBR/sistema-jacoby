@@ -132,6 +132,8 @@ export function BillingV2Module() {
   const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().slice(0, 10));
   const [cycleId, setCycleId] = useState("");
   const [tab, setTab] = useState("locacoes");
+  const [rentalBranchFilter, setRentalBranchFilter] = useState("");
+  const [movementBranchFilter, setMovementBranchFilter] = useState("");
   const [placementForm, setPlacementForm] = useState({
     branchId: "",
     equipmentId: "",
@@ -313,6 +315,20 @@ export function BillingV2Module() {
           Number(item.quantity || 0) > 0,
       ),
     [placements, movementForm.branchId],
+  );
+  const placementsForSelectedBranch = useMemo(
+    () =>
+      rentalBranchFilter
+        ? placements.filter((item) => item.branch_id === rentalBranchFilter)
+        : placements,
+    [placements, rentalBranchFilter],
+  );
+  const movementsForSelectedBranch = useMemo(
+    () =>
+      movementBranchFilter
+        ? movements.filter((item) => item.branch_id === movementBranchFilter)
+        : movements,
+    [movements, movementBranchFilter],
   );
   const selectedOutgoingPlacements = activePlacementsAtBranch.filter((item) =>
     outgoingPlacementIds.includes(item.id),
@@ -887,9 +903,10 @@ export function BillingV2Module() {
                   <Field label="Filial ou pátio">
                     <Select
                       value={placementForm.branchId}
-                      onValueChange={(value) =>
-                        setPlacementForm({ ...placementForm, branchId: value })
-                      }
+                      onValueChange={(value) => {
+                        setPlacementForm({ ...placementForm, branchId: value, equipmentId: "" });
+                        setRentalBranchFilter(value);
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecionar" />
@@ -906,6 +923,7 @@ export function BillingV2Module() {
                   <Field label="Equipamento">
                     <Select
                       value={placementForm.equipmentId}
+                      disabled={!placementForm.branchId}
                       onValueChange={(value) =>
                         setPlacementForm({ ...placementForm, equipmentId: value })
                       }
@@ -914,7 +932,9 @@ export function BillingV2Module() {
                         <SelectValue placeholder="Selecionar" />
                       </SelectTrigger>
                       <SelectContent>
-                        {equipment.map((item) => (
+                        {equipment
+                          .filter((item) => item.branch_id === placementForm.branchId)
+                          .map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {equipmentName(item)}
                           </SelectItem>
@@ -973,13 +993,20 @@ export function BillingV2Module() {
                   </Button>
                 </div>
               </Card>
-              <PlacementTable
-                rows={placements}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  {rentalBranchFilter
+                    ? `Equipamentos em locação · ${branches.find((item) => item.id === rentalBranchFilter)?.name || "Pátio selecionado"}`
+                    : "Equipamentos em locação · todos os pátios"}
+                </p>
+                <PlacementTable
+                rows={placementsForSelectedBranch}
                 branches={branches}
                 equipment={equipment}
                 residues={residues}
                 onDelete={(id) => void remove("billing_v2_placements", id)}
-              />
+                />
+              </div>
             </TabsContent>
             <TabsContent value="movimentos" className="space-y-4">
               <Card className="p-4">
@@ -995,6 +1022,7 @@ export function BillingV2Module() {
                       value={movementForm.branchId}
                       onValueChange={(value) => {
                         setMovementForm({ ...movementForm, branchId: value });
+                        setMovementBranchFilter(value);
                         setOutgoingPlacementIds([]);
                         setIncomingEquipmentIds([]);
                       }}
@@ -1129,13 +1157,20 @@ export function BillingV2Module() {
                   </Button>
                 </div>
               </Card>
-              <MovementTable
-                rows={movements}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  {movementBranchFilter
+                    ? `Movimentações · ${branches.find((item) => item.id === movementBranchFilter)?.name || "Pátio selecionado"}`
+                    : "Movimentações · todos os pátios"}
+                </p>
+                <MovementTable
+                rows={movementsForSelectedBranch}
                 branches={branches}
                 equipment={equipment}
                 residues={residues}
                 onDelete={(id) => void remove("billing_v2_movements", id)}
-              />
+                />
+              </div>
             </TabsContent>
             <TabsContent value="boletim" className="space-y-4">
               <Card className="p-4">
