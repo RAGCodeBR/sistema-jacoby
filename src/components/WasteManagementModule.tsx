@@ -1606,7 +1606,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 value="valores"
                 className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
               >
-                Troca e tratamento
+                Troca
               </TabsTrigger>
               <TabsTrigger
                 value="locacao"
@@ -3251,36 +3251,33 @@ function ClientMovementPrices({ clientId, mode = "operations" }: { clientId: str
       return data as { exchange_rate: number; treatment_rate: number; rental_rate: number } | null;
     },
   });
-  const [form, setForm] = useState({ exchange: "0", treatment: "0", rental: "0" });
+  const [form, setForm] = useState({ exchange: "0", rental: "0" });
   useEffect(() => {
-    setForm({ exchange: String(data?.exchange_rate || 0), treatment: String(data?.treatment_rate || 0), rental: String(data?.rental_rate || 0) });
+    setForm({ exchange: String(data?.exchange_rate || 0), rental: String(data?.rental_rate || 0) });
   }, [data]);
   const save = async () => {
     if (!clientId) return;
     const { error } = await (supabase.from("waste_client_billing_settings" as any) as any).upsert(
-      { client_id: clientId, exchange_rate: Number(form.exchange || 0), treatment_rate: Number(form.treatment || 0), rental_rate: Number(form.rental || 0) },
+      { client_id: clientId, exchange_rate: Number(form.exchange || 0), treatment_rate: Number(data?.treatment_rate || 0), rental_rate: Number(form.rental || 0) },
       { onConflict: "client_id" },
     );
     if (error) toast.error(error.message);
     else {
-      toast.success(mode === "rental" ? "Valor de locação salvo." : "Valores fixos do cliente salvos.");
+      toast.success(mode === "rental" ? "Valor de locação salvo." : "Valor por troca salvo.");
       void qc.invalidateQueries({ queryKey: ["waste-client-billing-settings", clientId] });
     }
   };
   return (
     <Card className="max-w-3xl p-4">
-      <h2 className="font-semibold">{mode === "rental" ? "Valor de locação" : "Valores fixos de movimentação"}</h2>
+      <h2 className="font-semibold">{mode === "rental" ? "Valor de locação" : "Valor por troca"}</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        {mode === "rental" ? "Este é o valor mensal de locação aplicado a cada equipamento deste cliente no Faturamento 2." : "Estes valores pertencem ao cliente e serão usados no Faturamento 2."}
+        {mode === "rental" ? "Este é o valor mensal de locação aplicado a cada equipamento deste cliente no Faturamento." : "Este valor é aplicado a cada troca confirmada no BM. O tratamento é definido em Resíduos e valores, por filial/pátio."}
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
-        {mode === "operations" && <><Field label="Valor fixo por troca">
+        {mode === "operations" && <Field label="Valor fixo por troca">
           <Input type="number" min="0" step="0.01" value={form.exchange} disabled={isLoading} onChange={(event) => setForm({ ...form, exchange: event.target.value })} />
         </Field>
-        <Field label="Valor de tratamento por kg">
-          <Input type="number" min="0" step="0.01" value={form.treatment} disabled={isLoading} onChange={(event) => setForm({ ...form, treatment: event.target.value })} />
-        </Field>
-        </>}
+        }
         {mode === "rental" && <Field label="Valor mensal por equipamento">
           <Input type="number" min="0" step="0.01" value={form.rental} disabled={isLoading} onChange={(event) => setForm({ ...form, rental: event.target.value })} />
         </Field>}

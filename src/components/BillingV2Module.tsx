@@ -69,7 +69,6 @@ type Movement = {
   treatment_rate: number;
   observation: string | null;
 };
-type Rates = { id: string; exchange_rate: number; treatment_rate: number };
 type Service = { id: string; name: string; active: boolean };
 type OutsourcedCompany = {
   id: string;
@@ -158,7 +157,6 @@ export function BillingV2Module() {
   const [outgoingPlacementIds, setOutgoingPlacementIds] = useState<string[]>([]);
   const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
   const savingMovementRef = useRef(false);
-  const [ratesForm, setRatesForm] = useState({ exchange: "0", treatment: "0" });
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
 
@@ -281,18 +279,6 @@ export function BillingV2Module() {
       return (data || []) as Movement[];
     },
   });
-  const ratesQuery = useQuery({
-    queryKey: ["billing-v2-rates", cycleId],
-    enabled: Boolean(cycleId),
-    queryFn: async () => {
-      const { data, error } = await (supabase.from("billing_v2_rates" as any) as any)
-        .select("*")
-        .eq("cycle_id", cycleId)
-        .maybeSingle();
-      if (error) throw error;
-      return data as Rates | null;
-    },
-  });
   const cycleServicesQuery = useQuery({
     queryKey: ["billing-v2-cycle-services", cycleId],
     enabled: Boolean(cycleId),
@@ -309,11 +295,11 @@ export function BillingV2Module() {
     enabled: Boolean(clientId),
     queryFn: async () => {
       const { data, error } = await (supabase.from("waste_client_billing_settings" as any) as any)
-        .select("exchange_rate,treatment_rate,rental_rate")
+        .select("exchange_rate,rental_rate")
         .eq("client_id", clientId)
         .maybeSingle();
       if (error) throw error;
-      return data as { exchange_rate: number; treatment_rate: number; rental_rate: number } | null;
+      return data as { exchange_rate: number; rental_rate: number } | null;
     },
   });
   const branches = branchesQuery.data || [],
@@ -361,13 +347,6 @@ export function BillingV2Module() {
     0,
   );
   useEffect(() => {
-    if (ratesQuery.data)
-      setRatesForm({
-        exchange: String(ratesQuery.data.exchange_rate || 0),
-        treatment: String(ratesQuery.data.treatment_rate || 0),
-      });
-  }, [ratesQuery.data]);
-  useEffect(() => {
     if (!lockedBranchId) return;
     setCycleBranchId(lockedBranchId);
     setRentalBranchFilter(lockedBranchId);
@@ -401,7 +380,6 @@ export function BillingV2Module() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["billing-v2-placements", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
-    qc.invalidateQueries({ queryKey: ["billing-v2-rates", cycleId] });
     qc.invalidateQueries({ queryKey: ["billing-v2-cycle-services", cycleId] });
   };
   const saveIssuer = useMutation({
@@ -498,9 +476,7 @@ export function BillingV2Module() {
         : [{ placement: null, replacementEquipmentId: null }];
       const totalWeight = Number(movementForm.weight || 0);
       const treatmentRate = Number(
-        residues.find((item) => item.id === movementForm.residueId)?.default_treatment_rate ||
-          clientSettingsQuery.data?.treatment_rate ||
-          0,
+        residues.find((item) => item.id === movementForm.residueId)?.default_treatment_rate ?? 0,
       );
       const movementRows = pairs.map((pair, index) => ({
         cycle_id: cycleId,
@@ -576,25 +552,6 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const saveRates = useMutation({
-    mutationFn: async () => {
-      if (!cycleId) throw Error("Abra um boletim antes de definir os valores.");
-      const { error } = await (supabase.from("billing_v2_rates" as any) as any).upsert(
-        {
-          cycle_id: cycleId,
-          exchange_rate: Number(ratesForm.exchange || 0),
-          treatment_rate: Number(ratesForm.treatment || 0),
-        },
-        { onConflict: "cycle_id" },
-      );
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      refresh();
-      toast.success("Valores do boletim salvos.");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
   const finalizeCycle = useMutation({
     mutationFn: async () => {
       if (!cycleId) throw Error("Abra um boletim antes de finalizá-lo.");
@@ -643,7 +600,6 @@ export function BillingV2Module() {
   const fixedRates = {
     rental_rate: Number(clientSettingsQuery.data?.rental_rate || 0),
     exchange_rate: Number(clientSettingsQuery.data?.exchange_rate || 0),
-    treatment_rate: Number(clientSettingsQuery.data?.treatment_rate || 0),
   };
   const totals = useMemo(() => {
     const rental = placements.reduce(
@@ -655,12 +611,12 @@ export function BillingV2Module() {
     const weight = confirmedMovements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
     const exchange = exchanges * fixedRates.exchange_rate;
     const treatment = confirmedMovements.reduce(
-      (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.treatment_rate || fixedRates.treatment_rate),
+      (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.treatment_rate || 0),
       0,
     );
     const servicesTotal = cycleServices.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     return { rental, exchanges, weight, exchange, treatment, services: servicesTotal, total: rental + exchange + treatment + servicesTotal };
-  }, [placements, movements, cycleServices, fixedRates.exchange_rate, fixedRates.treatment_rate]);
+  }, [placements, movements, cycleServices, fixedRates.exchange_rate]);
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
   const branch = (id: string) =>
     branches.find((item) => item.id === id) || recentBranches.find((item) => item.id === id);
@@ -757,7 +713,7 @@ export function BillingV2Module() {
       const branchPlacements = placements.filter((item) => item.branch_id === id);
       const branchMoves = confirmedMovements.filter((item) => item.branch_id === id);
       const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
-        const rate = Number(item.treatment_rate || fixedRates.treatment_rate);
+        const rate = Number(item.treatment_rate || 0);
         const key = `${item.waste_residue_id || "sem-residuo"}:${rate}`;
         acc[key] = acc[key] || { residueId: item.waste_residue_id || "sem-residuo", weight: 0, value: 0 };
         acc[key].weight += Number(item.weight_kg || 0);
@@ -1319,18 +1275,15 @@ export function BillingV2Module() {
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Troca e tratamento são valores fixos deste cliente e devem ser alterados em
-                  Configurações de movimentação.
+                  Locação e troca são valores do cliente. O tratamento usa o valor do resíduo
+                  definido para este pátio em Configurações de movimentação.
                 </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <div className="rounded-md border p-3 text-sm">
                     Locação: <strong>{money(fixedRates.rental_rate)} / equipamento</strong>
                   </div>
                   <div className="rounded-md border p-3 text-sm">
                     Troca: <strong>{money(fixedRates.exchange_rate)}</strong>
-                  </div>
-                  <div className="rounded-md border p-3 text-sm">
-                    Tratamento: <strong>{money(fixedRates.treatment_rate)} / kg</strong>
                   </div>
                 </div>
               </Card>
@@ -1345,7 +1298,6 @@ export function BillingV2Module() {
                 services={services}
                 cycleServices={cycleServices}
                 totals={totals}
-                rate={{ id: "fixed", ...fixedRates }}
               />
             </TabsContent>
           </Tabs>
@@ -1509,7 +1461,6 @@ function Boletim({
   services,
   cycleServices,
   totals,
-  rate,
 }: {
   client: string;
   cycle?: Cycle;
@@ -1529,7 +1480,6 @@ function Boletim({
     services: number;
     total: number;
   };
-  rate: Rates | null | undefined;
 }) {
   const branchIds = Array.from(
     new Set([...placements, ...movements].map((item) => item.branch_id)),
@@ -1576,13 +1526,13 @@ function Boletim({
           <tr className="border-b">
             <td className="py-2">Troca de equipamentos</td>
             <td className="py-2">{number(totals.exchanges)}</td>
-            <td className="py-2">{money(Number(rate?.exchange_rate || 0))}</td>
+            <td className="py-2">Conforme valor por troca</td>
             <td className="py-2 text-right">{money(totals.exchange)}</td>
           </tr>
           <tr className="border-b">
             <td className="py-2">Tratamento de resíduos</td>
             <td className="py-2">{number(totals.weight)} kg</td>
-            <td className="py-2">{money(Number(rate?.treatment_rate || 0))} / kg</td>
+            <td className="py-2">Conforme resíduo e filial/pátio</td>
             <td className="py-2 text-right">{money(totals.treatment)}</td>
           </tr>
           {cycleServices.map((item) => (
