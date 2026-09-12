@@ -1028,7 +1028,18 @@ export function BillingV2Module() {
               <Button onClick={() => void generatePdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF</Button>
             </div>
           </Card>
-          <Tabs value={tab} onValueChange={setTab}>
+          <Tabs
+            value={tab}
+            onValueChange={(nextTab) => {
+              // Esta opção é uma volta para a lista de busca, não apenas uma
+              // subaba do boletim que continua aberto acima.
+              if (nextTab === "historico") {
+                setCycleId("");
+                return;
+              }
+              setTab(nextTab);
+            }}
+          >
             <TabsList className="h-auto w-full justify-start overflow-x-auto">
               <TabsTrigger value="historico">Boletins do cliente</TabsTrigger>
               <TabsTrigger value="locacoes">Equipamentos em locação</TabsTrigger>
@@ -1429,16 +1440,12 @@ function PlacementTable({
   equipment,
   residues,
   onDelete,
-  onConfirmationChange,
-  changingConfirmationId,
 }: {
   rows: Placement[];
   branches: Branch[];
   equipment: Equipment[];
   residues: Residue[];
   onDelete: (id: string) => void;
-  onConfirmationChange: (id: string, confirmed: boolean) => void;
-  changingConfirmationId?: string;
 }) {
   return (
     <Card className="overflow-x-auto p-4">
@@ -1498,12 +1505,16 @@ function MovementTable({
   equipment,
   residues,
   onDelete,
+  onConfirmationChange,
+  changingConfirmationId,
 }: {
   rows: Movement[];
   branches: Branch[];
   equipment: Equipment[];
   residues: Residue[];
   onDelete: (id: string) => void;
+  onConfirmationChange: (id: string, confirmed: boolean) => void;
+  changingConfirmationId?: string;
 }) {
   return (
     <Card className="overflow-x-auto p-4">
