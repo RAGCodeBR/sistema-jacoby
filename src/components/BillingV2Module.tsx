@@ -192,6 +192,20 @@ export function BillingV2Module() {
   const branchesQuery = query<Branch>(["billing-v2-branches", clientId], "client_branches", (q) =>
     q.select("id,name,cnpj,address").eq("client_id", clientId).eq("is_active", true).order("name"),
   );
+  // A lista de recentes pode conter boletins de outro cliente. Carregamos as
+  // filiais ativas uma única vez para não trocar o nome do pátio por um rótulo
+  // genérico só porque outro cliente está selecionado no filtro.
+  const recentBranchesQuery = useQuery({
+    queryKey: ["billing-v2-recent-branches"],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("client_branches" as any) as any)
+        .select("id,name,cnpj,address")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return (data || []) as Branch[];
+    },
+  });
   const equipmentQuery = query<Equipment>(
     ["billing-v2-equipment", clientId],
     "waste_equipment",
@@ -303,6 +317,7 @@ export function BillingV2Module() {
     },
   });
   const branches = branchesQuery.data || [],
+    recentBranches = recentBranchesQuery.data || [],
     equipment = equipmentQuery.data || [],
     residues = residuesQuery.data || [],
     placements = placementsQuery.data || [],
@@ -647,7 +662,9 @@ export function BillingV2Module() {
     return { rental, exchanges, weight, exchange, treatment, services: servicesTotal, total: rental + exchange + treatment + servicesTotal };
   }, [placements, movements, cycleServices, fixedRates.exchange_rate, fixedRates.treatment_rate]);
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
-  const branch = (id: string) => branches.find((item) => item.id === id);
+  const branch = (id: string) =>
+    branches.find((item) => item.id === id) || recentBranches.find((item) => item.id === id);
+  const branchName = (id?: string | null) => branch(id || "")?.name || "Pátio não informado";
   const clientCycles = cyclesQuery.data || [];
   const recentCycles = recentCyclesQuery.data || [];
   const openRecentCycle = (item: Cycle) => {
@@ -891,7 +908,7 @@ export function BillingV2Module() {
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
-                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</td><td className="p-2">{branches.find((branch) => branch.id === item.branch_id)?.name || "Legado"}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
+                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
               </tbody></table>
             </div>
           </Card>
@@ -900,7 +917,7 @@ export function BillingV2Module() {
           <p className="mt-1 text-sm text-muted-foreground">Boletins encontrados para o cliente e pátio selecionados.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
-              {clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).length ? clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{branch(item.branch_id || "")?.name || "Legado"}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
+              {clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).length ? clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
             </tbody></table>
           </div>
         </Card>
