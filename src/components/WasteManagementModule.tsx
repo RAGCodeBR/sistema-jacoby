@@ -1760,7 +1760,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Valor da locação", "Ações"]}
+                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
                 rows={equipment
                   .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
                   .map((e) => [
@@ -1773,7 +1773,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     : e.capacity_m3 !== null
                       ? `${n(e.capacity_m3)} m³`
                       : "—",
-                  money(Number(e.monthly_rental_rate || 0)),
                   <div className="flex gap-1">
                     <Button
                       size="icon"
