@@ -29,10 +29,11 @@ type Equipment = {
   equipment_type: string;
   active: boolean;
 };
-type Residue = { id: string; name: string; active: boolean };
+type Residue = { id: string; name: string; active: boolean; branch_id: string | null; default_treatment_rate: number };
 type Cycle = {
   id: string;
   client_id: string;
+  branch_id: string | null;
   period_start: string;
   period_end: string;
   status: string;
@@ -64,6 +65,8 @@ type Movement = {
   placed_quantity: number;
   removed_quantity: number;
   weight_kg: number;
+  confirmed: boolean;
+  treatment_rate: number;
   observation: string | null;
 };
 type Rates = { id: string; exchange_rate: number; treatment_rate: number };
@@ -130,6 +133,7 @@ export function BillingV2Module() {
   const [clientId, setClientId] = useState("");
   const [periodStart, setPeriodStart] = useState(new Date().toISOString().slice(0, 10));
   const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [cycleBranchId, setCycleBranchId] = useState("");
   const [cycleId, setCycleId] = useState("");
   const [tab, setTab] = useState("locacoes");
   const [rentalBranchFilter, setRentalBranchFilter] = useState("");
@@ -149,6 +153,7 @@ export function BillingV2Module() {
     order: "",
     weight: "0",
     observation: "",
+    confirmed: false,
   });
   const [outgoingPlacementIds, setOutgoingPlacementIds] = useState<string[]>([]);
   const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
@@ -198,7 +203,7 @@ export function BillingV2Module() {
         .order("name"),
   );
   const residuesQuery = query<Residue>(["billing-v2-residues", clientId], "waste_residues", (q) =>
-    q.select("id,name,active").eq("client_id", clientId).eq("active", true).order("name"),
+    q.select("id,name,active,branch_id,default_treatment_rate").eq("client_id", clientId).eq("active", true).order("name"),
   );
   const servicesQuery = query<Service>(["billing-v2-services", clientId], "waste_services", (q) =>
     q.select("id,name,active").eq("client_id", clientId).eq("active", true).order("name"),
@@ -237,6 +242,7 @@ export function BillingV2Module() {
   const cycle =
     (cyclesQuery.data || []).find((item) => item.id === cycleId) ||
     (recentCyclesQuery.data || []).find((item) => item.id === cycleId);
+  const lockedBranchId = cycle?.branch_id || "";
   const placementsQuery = useQuery({
     queryKey: ["billing-v2-placements", cycleId],
     enabled: Boolean(cycleId),
@@ -306,6 +312,8 @@ export function BillingV2Module() {
     outsourcedCompanyServices = outsourcedCompanyServicesQuery.data || [],
     cycleServices = cycleServicesQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
+  const residuesForBranch = (branchId: string) =>
+    residues.filter((item) => !item.branch_id || item.branch_id === branchId);
   const activePlacementsAtBranch = useMemo(
     () =>
       placements.filter(
@@ -344,14 +352,23 @@ export function BillingV2Module() {
         treatment: String(ratesQuery.data.treatment_rate || 0),
       });
   }, [ratesQuery.data]);
+  useEffect(() => {
+    if (!lockedBranchId) return;
+    setCycleBranchId(lockedBranchId);
+    setRentalBranchFilter(lockedBranchId);
+    setMovementBranchFilter(lockedBranchId);
+    setPlacementForm((current) => ({ ...current, branchId: lockedBranchId, equipmentId: "" }));
+    setMovementForm((current) => ({ ...current, branchId: lockedBranchId }));
+  }, [lockedBranchId]);
 
   const openCycle = useMutation({
     mutationFn: async () => {
       if (!clientId) throw Error("Selecione um cliente.");
       if (!periodStart || !periodEnd || periodEnd < periodStart)
         throw Error("Informe um intervalo de datas válido para o boletim.");
+      if (!cycleBranchId) throw Error("Selecione a filial ou pátio deste boletim.");
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
-        .insert({ client_id: clientId, period_start: periodStart, period_end: periodEnd })
+        .insert({ client_id: clientId, branch_id: cycleBranchId, period_start: periodStart, period_end: periodEnd })
         .select("id")
         .single();
       if (error) throw error;
@@ -409,6 +426,8 @@ export function BillingV2Module() {
     mutationFn: async () => {
       if (!cycleId || !placementForm.branchId || !placementForm.equipmentId)
         throw Error("Abra um boletim e informe filial/pátio e equipamento.");
+      if (lockedBranchId && placementForm.branchId !== lockedBranchId)
+        throw Error("Este boletim pertence a outra filial/pátio.");
       const { error } = await (supabase.from("billing_v2_placements" as any) as any).insert({
         cycle_id: cycleId,
         client_id: clientId,
@@ -442,6 +461,8 @@ export function BillingV2Module() {
       try {
       if (!cycleId || !movementForm.branchId)
         throw Error("Abra um boletim e informe a filial/pátio.");
+      if (lockedBranchId && movementForm.branchId !== lockedBranchId)
+        throw Error("Este boletim pertence a outra filial/pátio.");
       const hasOutgoing = selectedOutgoingPlacements.length > 0;
       const hasIncoming = incomingEquipmentIds.length > 0;
       if (hasOutgoing !== hasIncoming)
@@ -461,6 +482,11 @@ export function BillingV2Module() {
           )
         : [{ placement: null, replacementEquipmentId: null }];
       const totalWeight = Number(movementForm.weight || 0);
+      const treatmentRate = Number(
+        residues.find((item) => item.id === movementForm.residueId)?.default_treatment_rate ||
+          clientSettingsQuery.data?.treatment_rate ||
+          0,
+      );
       const movementRows = pairs.map((pair, index) => ({
         cycle_id: cycleId,
         branch_id: movementForm.branchId,
@@ -476,11 +502,13 @@ export function BillingV2Module() {
             ? totalWeight - (totalWeight / pairs.length) * index
             : totalWeight / pairs.length,
         observation: movementForm.observation || null,
+        confirmed: movementForm.confirmed,
+        treatment_rate: treatmentRate,
       }));
       const { error } = await (supabase.from("billing_v2_movements" as any) as any).insert(movementRows);
       if (error) throw error;
 
-      if (hasOutgoing) {
+      if (hasOutgoing && movementForm.confirmed) {
         let replacementIndex = 0;
         for (const placement of selectedOutgoingPlacements) {
           const quantity = Number(placement.quantity || 0);
@@ -524,6 +552,7 @@ export function BillingV2Module() {
         order: "",
         weight: "0",
         observation: "",
+        confirmed: false,
       });
       setOutgoingPlacementIds([]);
       setIncomingEquipmentIds([]);
@@ -606,10 +635,14 @@ export function BillingV2Module() {
       (sum, item) => sum + Number(item.quantity || 0) * Number(item.monthly_rental_rate || 0),
       0,
     );
-    const exchanges = movements.reduce((sum, item) => sum + Number(item.removed_quantity || 0), 0);
-    const weight = movements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
+    const confirmedMovements = movements.filter((item) => item.confirmed);
+    const exchanges = confirmedMovements.reduce((sum, item) => sum + Number(item.removed_quantity || 0), 0);
+    const weight = confirmedMovements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
     const exchange = exchanges * fixedRates.exchange_rate;
-    const treatment = weight * fixedRates.treatment_rate;
+    const treatment = confirmedMovements.reduce(
+      (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.treatment_rate || fixedRates.treatment_rate),
+      0,
+    );
     const servicesTotal = cycleServices.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     return { rental, exchanges, weight, exchange, treatment, services: servicesTotal, total: rental + exchange + treatment + servicesTotal };
   }, [placements, movements, cycleServices, fixedRates.exchange_rate, fixedRates.treatment_rate]);
@@ -619,6 +652,7 @@ export function BillingV2Module() {
   const recentCycles = recentCyclesQuery.data || [];
   const openRecentCycle = (item: Cycle) => {
     setClientId(item.client_id);
+    setCycleBranchId(item.branch_id || "");
     setCycleId(item.id);
     setTab("locacoes");
   };
@@ -632,7 +666,8 @@ export function BillingV2Module() {
     return outsourcedCompanyServices.some((link) => link.waste_service_id === service.id && link.outsourced_company_id === cycle.outsourced_company_id);
   }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
   const generatePdf = async () => {
-    const branchIds = Array.from(new Set([...placements, ...movements].map((item) => item.branch_id)));
+    const confirmedMovements = movements.filter((item) => item.confirmed);
+    const branchIds = Array.from(new Set([...placements, ...confirmedMovements].map((item) => item.branch_id)));
     if (!cycle || !branchIds.length) {
       toast.error("Registre uma locação ou movimentação antes de gerar o PDF.");
       return;
@@ -703,10 +738,13 @@ export function BillingV2Module() {
       if (!pageBranch) continue;
       let y = await drawHeader(pageBranch, index);
       const branchPlacements = placements.filter((item) => item.branch_id === id);
-      const branchMoves = movements.filter((item) => item.branch_id === id);
-      const treatmentByResidue = branchMoves.reduce<Record<string, number>>((acc, item) => {
-        const key = item.waste_residue_id || "sem-residuo";
-        acc[key] = (acc[key] || 0) + Number(item.weight_kg || 0);
+      const branchMoves = confirmedMovements.filter((item) => item.branch_id === id);
+      const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
+        const rate = Number(item.treatment_rate || fixedRates.treatment_rate);
+        const key = `${item.waste_residue_id || "sem-residuo"}:${rate}`;
+        acc[key] = acc[key] || { residueId: item.waste_residue_id || "sem-residuo", weight: 0, value: 0 };
+        acc[key].weight += Number(item.weight_kg || 0);
+        acc[key].value += Number(item.weight_kg || 0) * rate;
         return acc;
       }, {});
       const items = [
@@ -722,11 +760,11 @@ export function BillingV2Module() {
           quantity: `${number(Number(item.removed_quantity))} un.`,
           value: Number(item.removed_quantity || 0) * fixedRates.exchange_rate,
         })),
-        ...Object.entries(treatmentByResidue).filter(([, weight]) => weight > 0).map(([residueId, weight]) => ({
-          name: residues.find((entry) => entry.id === residueId)?.name || "Tratamento de resíduos",
+        ...Object.values(treatmentByResidue).filter((item) => item.weight > 0).map((item) => ({
+          name: residues.find((entry) => entry.id === item.residueId)?.name || "Tratamento de resíduos",
           type: "Resíduo",
-          quantity: `${number(weight)} kg`,
-          value: weight * fixedRates.treatment_rate,
+          quantity: `${number(item.weight)} kg`,
+          value: item.value,
         })),
         ...(index === 0
           ? cycleServices.map((item) => ({
@@ -801,6 +839,7 @@ export function BillingV2Module() {
             onValueChange={(value) => {
               setClientId(value);
               setCycleId("");
+              setCycleBranchId("");
             }}
           >
             <SelectTrigger>
@@ -812,6 +851,14 @@ export function BillingV2Module() {
                   {client.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Filial ou pátio do boletim">
+          <Select value={cycleBranchId} onValueChange={setCycleBranchId} disabled={Boolean(cycleId)}>
+            <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+            <SelectContent>
+              {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </Field>
@@ -843,17 +890,17 @@ export function BillingV2Module() {
               <span className="text-xs text-muted-foreground">Últimos 8 registros</span>
             </div>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
-                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
+              <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
+                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</td><td className="p-2">{branches.find((branch) => branch.id === item.branch_id)?.name || "Legado"}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
               </tbody></table>
             </div>
           </Card>
         <Card className="p-5">
-          <h2 className="font-semibold">Boletins de {clientName}</h2>
+          <h2 className="font-semibold">Boletins de {clientName}{cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Abra qualquer boletim para continuar a edição, mesmo depois de finalizado.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
-              {clientCycles.length ? clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para este cliente.</td></tr>}
+              {clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).length ? clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
             </tbody></table>
           </div>
         </Card>
@@ -869,6 +916,10 @@ export function BillingV2Module() {
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Período</p>
                 <p className="font-semibold">{cycle ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</p>
+              </div>
+              <div className="lg:text-center">
+                <p className="text-xs text-muted-foreground">Filial ou pátio</p>
+                <p className="font-semibold">{branch(cycle?.branch_id || "")?.name || "Boletim legado"}</p>
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Número do boletim</p>
@@ -902,7 +953,8 @@ export function BillingV2Module() {
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <Field label="Filial ou pátio">
                     <Select
-                      value={placementForm.branchId}
+                      value={lockedBranchId || placementForm.branchId}
+                      disabled={Boolean(lockedBranchId)}
                       onValueChange={(value) => {
                         setPlacementForm({ ...placementForm, branchId: value, equipmentId: "" });
                         setRentalBranchFilter(value);
@@ -953,7 +1005,7 @@ export function BillingV2Module() {
                         <SelectValue placeholder="Opcional" />
                       </SelectTrigger>
                       <SelectContent>
-                        {residues.map((item) => (
+                        {residuesForBranch(lockedBranchId || placementForm.branchId).map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {item.name}
                           </SelectItem>
@@ -1019,7 +1071,8 @@ export function BillingV2Module() {
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <Field label="Filial ou pátio">
                     <Select
-                      value={movementForm.branchId}
+                      value={lockedBranchId || movementForm.branchId}
+                      disabled={Boolean(lockedBranchId)}
                       onValueChange={(value) => {
                         setMovementForm({ ...movementForm, branchId: value });
                         setMovementBranchFilter(value);
@@ -1050,7 +1103,7 @@ export function BillingV2Module() {
                         <SelectValue placeholder="Opcional" />
                       </SelectTrigger>
                       <SelectContent>
-                        {residues.map((item) => (
+                        {residuesForBranch(lockedBranchId || movementForm.branchId).map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {item.name}
                           </SelectItem>
@@ -1152,6 +1205,12 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
+                  <div className="flex items-end pb-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                      <Checkbox checked={movementForm.confirmed} onCheckedChange={(checked) => setMovementForm({ ...movementForm, confirmed: checked === true })} />
+                      Movimentação realizada de fato
+                    </label>
+                  </div>
                   <Button className="self-end" disabled={addMovement.isPending} onClick={() => addMovement.mutate()}>
                     {addMovement.isPending ? "Registrando..." : "Registrar movimentação"}
                   </Button>
@@ -1263,7 +1322,7 @@ export function BillingV2Module() {
                 cycle={cycle}
                 branches={branches}
                 placements={placements}
-                movements={movements}
+                movements={movements.filter((item) => item.confirmed)}
                 equipment={equipment}
                 residues={residues}
                 services={services}
@@ -1371,6 +1430,7 @@ function MovementTable({
             <th className="p-2">Colocadas</th>
             <th className="p-2">Removidas</th>
             <th className="p-2">Peso</th>
+            <th className="p-2">Confirmada</th>
             <th className="p-2" />
           </tr>
         </thead>
@@ -1401,6 +1461,7 @@ function MovementTable({
                 <td className="p-2">{number(Number(row.placed_quantity))}</td>
                 <td className="p-2">{number(Number(row.removed_quantity))}</td>
                 <td className="p-2">{number(Number(row.weight_kg))} kg</td>
+                <td className="p-2">{row.confirmed ? "Sim" : "Pendente"}</td>
                 <td className="p-2">
                   <Button variant="ghost" size="icon" onClick={() => onDelete(row.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
@@ -1410,7 +1471,7 @@ function MovementTable({
             ))
           ) : (
             <tr>
-              <td className="p-5 text-center text-muted-foreground" colSpan={10}>
+              <td className="p-5 text-center text-muted-foreground" colSpan={11}>
                 Nenhuma movimentação neste boletim.
               </td>
             </tr>

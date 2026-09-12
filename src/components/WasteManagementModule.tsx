@@ -34,6 +34,7 @@ type Residue = {
   default_rental_rate: number;
   default_exchange_rate: number;
   default_treatment_rate: number;
+  branch_id: string | null;
   active: boolean;
 };
 type Equipment = {
@@ -278,6 +279,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     rental: "0",
     exchange: "0",
     treatment: "0",
+    branchId: "",
   });
   const [standardResidueForm, setStandardResidueForm] = useState({
     name: "",
@@ -501,7 +503,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       if (!clientId || !resForm.name) throw Error("Informe o tipo de resíduo.");
       const payload = {
         client_id: clientId,
-        branch_id: eqForm.branchId || null,
+        branch_id: resForm.branchId || null,
         name: resForm.name,
         waste_class: resForm.waste_class,
         unit: resForm.unit,
@@ -526,6 +528,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         rental: "0",
         exchange: "0",
         treatment: "0",
+        branchId: "",
       });
       refreshClient();
     },
@@ -1341,6 +1344,15 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               O demonstrativo puxa estas categorias e os valores cadastrados.
             </p>
             <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+              <Field label="Filial ou pátio">
+                <Select value={resForm.branchId || "all"} onValueChange={(value) => setResForm({ ...resForm, branchId: value === "all" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Todos os pátios" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os pátios</SelectItem>
+                    {branches.filter((branch) => branch.is_active).map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
               {isAdmin && (
                 <Field label="Tipo padrão">
                   <Select
@@ -1435,6 +1447,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                         rental: "0",
                         exchange: "0",
                         treatment: "0",
+                        branchId: "",
                       });
                     }}
                   >
@@ -1445,9 +1458,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </div>
           </Card>
           <ActionTable
-            headers={["Resíduo", "Classe", "Locação", "Troca", "Tratamento", "Ações"]}
+            headers={["Resíduo", "Filial/pátio", "Classe", "Locação", "Troca", "Tratamento/kg", "Ações"]}
             rows={residues.map((r) => [
               r.name,
+              branches.find((branch) => branch.id === r.branch_id)?.name || "Todos os pátios",
               r.waste_class === "class_i" ? "Classe I" : "Classe II",
               money(r.default_rental_rate),
               money(r.default_exchange_rate),
@@ -1467,6 +1481,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       rental: String(r.default_rental_rate),
                       exchange: String(r.default_exchange_rate),
                       treatment: String(r.default_treatment_rate),
+                      branchId: r.branch_id || "",
                     });
                   }}
                 >
@@ -1577,6 +1592,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
               >
                 Cadastro de serviços
+              </TabsTrigger>
+              <TabsTrigger
+                value="residuos"
+                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
+              >
+                Resíduos e valores
               </TabsTrigger>
               <TabsTrigger
                 value="valores"
@@ -1824,6 +1845,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   </div>,
                 ])}
               />
+            </TabsContent>
+            <TabsContent value="residuos" className="space-y-4">
+              <ResidueBranchConfig clientId={clientId} branches={branches} residues={residues} onSaved={refreshClient} />
             </TabsContent>
             <TabsContent value="valores" className="space-y-4">
               <ClientMovementPrices clientId={clientId} />
@@ -3002,6 +3026,74 @@ function SimpleTable({ headers, rows }: { headers: string[]; rows: string[][] })
     </Card>
   );
 }
+function ResidueBranchConfig({
+  clientId,
+  branches,
+  residues,
+  onSaved,
+}: {
+  clientId: string;
+  branches: Branch[];
+  residues: Residue[];
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({ id: "", branchId: "", name: "", treatment: "0" });
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form.name.trim()) throw Error("Informe o nome do resíduo.");
+      const payload = {
+        client_id: clientId,
+        branch_id: form.branchId || null,
+        name: form.name.trim(),
+        waste_class: "class_ii",
+        unit: "kg",
+        default_rental_rate: 0,
+        default_exchange_rate: 0,
+        default_treatment_rate: Number(form.treatment || 0),
+      };
+      const request = supabase.from("waste_residues" as any) as any;
+      const { error } = form.id
+        ? await request.update(payload).eq("id", form.id)
+        : await request.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setForm({ id: "", branchId: "", name: "", treatment: "0" });
+      onSaved();
+      toast.success("Resíduo e valor de tratamento salvos.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  return (
+    <>
+      <Card className="p-4">
+        <h2 className="font-semibold">Resíduo e valor por filial/pátio</h2>
+        <p className="mt-1 text-sm text-muted-foreground">O valor por kg será usado no BM desta empresa apenas quando a movimentação for confirmada.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <Field label="Filial ou pátio">
+            <Select value={form.branchId || "all"} onValueChange={(value) => setForm({ ...form, branchId: value === "all" ? "" : value })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="all">Todos os pátios</SelectItem>{branches.filter((branch) => branch.is_active).map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Resíduo"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Lixo comercial" /></Field>
+          <Field label="Tratamento por kg"><Input type="number" min="0" step="0.01" value={form.treatment} onChange={(event) => setForm({ ...form, treatment: event.target.value })} /></Field>
+          <Button className="self-end" onClick={() => save.mutate()} disabled={save.isPending}>{form.id ? "Salvar" : "Cadastrar resíduo"}</Button>
+        </div>
+      </Card>
+      <ActionTable
+        headers={["Resíduo", "Filial/pátio", "Tratamento/kg", "Ações"]}
+        rows={residues.map((residue) => [
+          residue.name,
+          branches.find((branch) => branch.id === residue.branch_id)?.name || "Todos os pátios",
+          money(residue.default_treatment_rate),
+          <Button key={residue.id} variant="ghost" size="sm" onClick={() => setForm({ id: residue.id, branchId: residue.branch_id || "", name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}><Pencil className="mr-2 h-4 w-4" />Editar</Button>,
+        ])}
+      />
+    </>
+  );
+}
+
 function ActionTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
   return (
     <Card className="overflow-x-auto p-4">
