@@ -175,12 +175,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Supabase emits auth state changes after sign-in, sign-out and token refresh.
     // The timeout avoids updating profile data inside the auth callback stack.
-    const { data: sub } = supabase.auth.onAuthStateChange((_e: unknown, s: Session | null) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s: Session | null) => {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        setLoading(true);
-        setTimeout(() => loadProfile(s.user.id), 0);
+        // Renovação de token acontece em segundo plano. Não recarregamos o perfil
+        // nessas renovações para evitar a tela inteira de "Carregando" entre páginas.
+        if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+          setLoading(true);
+          setTimeout(() => loadProfile(s.user.id), 0);
+        }
       } else {
         setProfile(null);
         setIsAdmin(false);

@@ -357,7 +357,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const { data: residues = [] } = clientQuery<Residue>("waste-residues", "waste_residues");
   const { data: standardResidueTypes = [] } = useQuery({
     queryKey: ["standard-residue-types"],
-    enabled: isAdmin,
+    enabled: canConfigureMovements,
     queryFn: async () => {
       const { data, error } = await (supabase.from("waste_residue_types" as any) as any)
         .select("*")
@@ -369,7 +369,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const { data: equipment = [] } = clientQuery<Equipment>("waste-equipment", "waste_equipment");
   const { data: equipmentOptions = [] } = useQuery({
     queryKey: ["waste-equipment-options"],
-    enabled: isAdmin,
+    enabled: canConfigureMovements,
     queryFn: async () => {
       const { data, error } = await (supabase.from("waste_equipment_options" as any) as any)
         .select("id,option_type,name,active")
