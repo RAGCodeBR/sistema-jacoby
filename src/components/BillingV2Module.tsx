@@ -101,6 +101,24 @@ const money = (value: number) =>
 const number = (value: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0);
 const bulletinNumber = (value?: number | null) => `#${String(value || 0).padStart(3, "0")}`;
+const billingViewStorageKey = "jacoby:billing-v2:view";
+type BillingViewState = {
+  clientId?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  cycleBranchId?: string;
+  cycleId?: string;
+  tab?: string;
+  residueFilterId?: string;
+};
+const storedBillingView = (): BillingViewState => {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(sessionStorage.getItem(billingViewStorageKey) || "{}") as BillingViewState;
+  } catch {
+    return {};
+  }
+};
 const equipmentName = (item?: Equipment) =>
   item
     ? [item.identification, item.name, item.equipment_type].filter(Boolean).join(" · ")
@@ -129,13 +147,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function BillingV2Module() {
   const qc = useQueryClient();
   const { data: clients = [] } = useClients();
-  const [clientId, setClientId] = useState("");
-  const [periodStart, setPeriodStart] = useState(new Date().toISOString().slice(0, 10));
-  const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().slice(0, 10));
-  const [cycleBranchId, setCycleBranchId] = useState("");
-  const [cycleId, setCycleId] = useState("");
-  const [tab, setTab] = useState("locacoes");
-  const [residueFilterId, setResidueFilterId] = useState("all");
+  const [clientId, setClientId] = useState(() => storedBillingView().clientId || "");
+  const [periodStart, setPeriodStart] = useState(() => storedBillingView().periodStart || new Date().toISOString().slice(0, 10));
+  const [periodEnd, setPeriodEnd] = useState(() => storedBillingView().periodEnd || new Date().toISOString().slice(0, 10));
+  const [cycleBranchId, setCycleBranchId] = useState(() => storedBillingView().cycleBranchId || "");
+  const [cycleId, setCycleId] = useState(() => storedBillingView().cycleId || "");
+  const [tab, setTab] = useState(() => storedBillingView().tab || "locacoes");
+  const [residueFilterId, setResidueFilterId] = useState(() => storedBillingView().residueFilterId || "all");
   const [rentalBranchFilter, setRentalBranchFilter] = useState("");
   const [movementBranchFilter, setMovementBranchFilter] = useState("");
   const [placementForm, setPlacementForm] = useState({
@@ -164,6 +182,12 @@ export function BillingV2Module() {
   useEffect(() => {
     if (!clientId && clients[0]) setClientId(clients[0].id);
   }, [clientId, clients]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    sessionStorage.setItem(billingViewStorageKey, JSON.stringify({
+      clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId,
+    } satisfies BillingViewState));
+  }, [clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId]);
   const query = <T,>(key: unknown[], table: string, configure: (request: any) => any) =>
     useQuery({
       queryKey: key,
@@ -947,7 +971,7 @@ export function BillingV2Module() {
               <TabsTrigger value="movimentos">Movimentações</TabsTrigger>
               <TabsTrigger value="boletim">Boletim</TabsTrigger>
             </TabsList>
-            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="space-y-4">
               <Card className="p-4">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
