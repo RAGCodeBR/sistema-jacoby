@@ -1627,7 +1627,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   Selecione uma sugestão já cadastrada ou digite uma nova opção. Ao salvar, ela
                   ficará disponível para os próximos cadastros.
                 </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(145px,0.85fr)_minmax(145px,0.9fr)_minmax(180px,1.2fr)_minmax(180px,1.2fr)_minmax(320px,1.65fr)_minmax(185px,1fr)]">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   <Field label="Filial ou pátio">
                     {branches.some((branch) => branch.is_active) ? (
                       <Select
@@ -1675,7 +1675,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     />
                   </Field>
                   <Field label="Capacidade">
-                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(135px,170px)] gap-2">
+                    <div className="grid grid-cols-[minmax(120px,1fr)_minmax(150px,170px)] gap-2">
                       <Input
                         type="number"
                         min="0"
