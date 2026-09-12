@@ -309,7 +309,7 @@ export function BillingV2Module() {
         .order("name"),
   );
   const residuesQuery = query<Residue>(["billing-v2-residues", clientId], "waste_residues", (q) =>
-    q.select("id,name,active,branch_id,default_treatment_rate").eq("client_id", clientId).eq("active", true).order("name"),
+    q.select("id,name,active,branch_id,default_treatment_rate").eq("client_id", clientId).order("name"),
   );
   const servicesQuery = query<Service>(["billing-v2-services", clientId], "waste_services", (q) =>
     q.select("id,name,active").eq("client_id", clientId).eq("active", true).order("name"),
@@ -410,8 +410,9 @@ export function BillingV2Module() {
     previousClosedCycle = previousClosedCycleQuery.data || null,
     previousClosedPlacements = previousClosedPlacementsQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
+  const activeResidues = residues.filter((item) => item.active);
   const residuesForBranch = (branchId: string) =>
-    residues.filter((item) => !item.branch_id || item.branch_id === branchId);
+    activeResidues.filter((item) => !item.branch_id || item.branch_id === branchId);
   const activePlacementsAtBranch = useMemo(
     () =>
       placements.filter(
@@ -1135,7 +1136,7 @@ export function BillingV2Module() {
                   <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os resíduos</SelectItem>
-                    {residues.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
+                    {activeResidues.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

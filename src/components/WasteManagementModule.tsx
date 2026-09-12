@@ -3115,16 +3115,16 @@ function ResidueBranchConfig({
 }) {
   const [form, setForm] = useState({ id: "", branchId: "", name: "", treatment: "0" });
   const currentRows = form.branchId
-    ? residues.filter((residue) => residue.branch_id === form.branchId)
-    : residues.filter((residue) => !residue.branch_id);
+    ? residues.filter((residue) => residue.active && residue.branch_id === form.branchId)
+    : residues.filter((residue) => residue.active && !residue.branch_id);
   const configuredNames = new Set(currentRows.map((residue) => residue.name.trim().toLocaleLowerCase()));
   const inheritedRows = form.branchId
     ? residues.filter(
         (residue) =>
-          !residue.branch_id && !configuredNames.has(residue.name.trim().toLocaleLowerCase()),
+          residue.active && !residue.branch_id && !configuredNames.has(residue.name.trim().toLocaleLowerCase()),
       )
     : [];
-  const knownResidueNames = Array.from(new Set(residues.map((residue) => residue.name))).sort();
+  const knownResidueNames = Array.from(new Set(residues.filter((residue) => residue.active).map((residue) => residue.name))).sort();
   const save = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw Error("Informe o nome do resíduo.");
@@ -3148,6 +3148,20 @@ function ResidueBranchConfig({
       setForm((current) => ({ id: "", branchId: current.branchId, name: "", treatment: "0" }));
       onSaved();
       toast.success("Resíduo e valor de tratamento salvos.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const removeResidue = useMutation({
+    mutationFn: async (residue: Residue) => {
+      const { error } = await (supabase.from("waste_residues" as any) as any)
+        .update({ active: false })
+        .eq("id", residue.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      if (form.id) setForm((current) => ({ ...current, id: "", name: "", treatment: "0" }));
+      onSaved();
+      toast.success("Resíduo excluído das opções do BM.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -3175,7 +3189,12 @@ function ResidueBranchConfig({
           residue.name,
           branches.find((branch) => branch.id === residue.branch_id)?.name || "Todos os pátios",
           money(residue.default_treatment_rate),
-          <Button key={residue.id} variant="ghost" size="sm" onClick={() => setForm({ id: residue.id, branchId: residue.branch_id || "", name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}><Pencil className="mr-2 h-4 w-4" />Editar</Button>,
+          <div key={residue.id} className="flex gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setForm({ id: residue.id, branchId: residue.branch_id || "", name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}><Pencil className="mr-2 h-4 w-4" />Editar</Button>
+            <Button variant="ghost" size="icon" title="Excluir resíduo" disabled={removeResidue.isPending} onClick={() => {
+              if (confirm(`Excluir o resíduo “${residue.name}” desta configuração? Ele deixará de aparecer no BM e nos novos lançamentos.`)) removeResidue.mutate(residue);
+            }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          </div>,
           ]),
           ...inheritedRows.map((residue) => [
             residue.name,
