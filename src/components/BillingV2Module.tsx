@@ -135,6 +135,7 @@ export function BillingV2Module() {
   const [cycleBranchId, setCycleBranchId] = useState("");
   const [cycleId, setCycleId] = useState("");
   const [tab, setTab] = useState("locacoes");
+  const [residueFilterId, setResidueFilterId] = useState("all");
   const [rentalBranchFilter, setRentalBranchFilter] = useState("");
   const [movementBranchFilter, setMovementBranchFilter] = useState("");
   const [placementForm, setPlacementForm] = useState({
@@ -370,6 +371,7 @@ export function BillingV2Module() {
     },
     onSuccess: (id) => {
       setCycleId(id);
+      setResidueFilterId("all");
       qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       setTab("locacoes");
@@ -601,12 +603,12 @@ export function BillingV2Module() {
     rental_rate: Number(clientSettingsQuery.data?.rental_rate || 0),
     exchange_rate: Number(clientSettingsQuery.data?.exchange_rate || 0),
   };
-  const totals = useMemo(() => {
-    const rental = placements.reduce(
+  const calculateTotals = (selectedPlacements: Placement[], selectedMovements: Movement[], selectedServices: CycleService[]) => {
+    const confirmedMovements = selectedMovements.filter((item) => item.confirmed);
+    const rental = selectedPlacements.reduce(
       (sum, item) => sum + Number(item.quantity || 0) * Number(item.monthly_rental_rate || 0),
       0,
     );
-    const confirmedMovements = movements.filter((item) => item.confirmed);
     const exchanges = confirmedMovements.reduce((sum, item) => sum + Number(item.removed_quantity || 0), 0);
     const weight = confirmedMovements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
     const exchange = exchanges * fixedRates.exchange_rate;
@@ -614,9 +616,27 @@ export function BillingV2Module() {
       (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.treatment_rate || 0),
       0,
     );
-    const servicesTotal = cycleServices.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const servicesTotal = selectedServices.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     return { rental, exchanges, weight, exchange, treatment, services: servicesTotal, total: rental + exchange + treatment + servicesTotal };
-  }, [placements, movements, cycleServices, fixedRates.exchange_rate]);
+  };
+  const totals = useMemo(
+    () => calculateTotals(placements, movements, cycleServices),
+    [placements, movements, cycleServices, fixedRates.exchange_rate],
+  );
+  const filteredPlacements = useMemo(
+    () => residueFilterId === "all" ? placements : placements.filter((item) => item.waste_residue_id === residueFilterId),
+    [placements, residueFilterId],
+  );
+  const filteredMovements = useMemo(
+    () => residueFilterId === "all" ? movements : movements.filter((item) => item.waste_residue_id === residueFilterId),
+    [movements, residueFilterId],
+  );
+  const filteredServices = residueFilterId === "all" ? cycleServices : [];
+  const filteredTotals = useMemo(
+    () => calculateTotals(filteredPlacements, filteredMovements, filteredServices),
+    [filteredPlacements, filteredMovements, filteredServices, fixedRates.exchange_rate],
+  );
+  const selectedResidueName = residueFilterId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === residueFilterId)?.name || "Resíduo selecionado";
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
   const branch = (id: string) =>
     branches.find((item) => item.id === id) || recentBranches.find((item) => item.id === id);
@@ -627,20 +647,21 @@ export function BillingV2Module() {
     setClientId(item.client_id);
     setCycleBranchId(item.branch_id || "");
     setCycleId(item.id);
+    setResidueFilterId("all");
     setTab("locacoes");
   };
   const issuerCompany = outsourcedCompanies.find((company) => company.id === cycle?.outsourced_company_id);
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
-    cycleServices.some((service) => service.outsourced_company_id === company.id),
+    filteredServices.some((service) => service.outsourced_company_id === company.id),
   );
-  const hasThirdPartyContext = Boolean(documentThirdParty) || cycleServices.length > 0;
+  const hasThirdPartyContext = Boolean(documentThirdParty) || filteredServices.length > 0;
   const availableServices = services.filter((service) => {
     if (cycle?.issuer_type !== "outsourced" || !cycle.outsourced_company_id) return true;
     return outsourcedCompanyServices.some((link) => link.waste_service_id === service.id && link.outsourced_company_id === cycle.outsourced_company_id);
   }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
   const generatePdf = async () => {
-    const confirmedMovements = movements.filter((item) => item.confirmed);
-    const branchIds = Array.from(new Set([...placements, ...confirmedMovements].map((item) => item.branch_id)));
+    const confirmedMovements = filteredMovements.filter((item) => item.confirmed);
+    const branchIds = Array.from(new Set([...filteredPlacements, ...confirmedMovements].map((item) => item.branch_id)));
     if (!cycle || !branchIds.length) {
       toast.error("Registre uma locação ou movimentação antes de gerar o PDF.");
       return;
@@ -674,7 +695,8 @@ export function BillingV2Module() {
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.text(`Período: ${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(cycle.bulletin_number)}`, 105, 29, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 38, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 37, { align: "center" });
+      if (residueFilterId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${selectedResidueName}`, 105, 42, { align: "center" }); }
       doc.setFillColor(236, 246, 228); doc.roundedRect(14, 51, 182, 11, 2, 2, "F");
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
       doc.text(`NOTA FISCAL SERÁ EMITIDA PELA ${cycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`, 105, 58, { align: "center" });
@@ -710,7 +732,7 @@ export function BillingV2Module() {
       const pageBranch = branch(id);
       if (!pageBranch) continue;
       let y = await drawHeader(pageBranch, index);
-      const branchPlacements = placements.filter((item) => item.branch_id === id);
+      const branchPlacements = filteredPlacements.filter((item) => item.branch_id === id);
       const branchMoves = confirmedMovements.filter((item) => item.branch_id === id);
       const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
         const rate = Number(item.treatment_rate || 0);
@@ -740,7 +762,7 @@ export function BillingV2Module() {
           value: item.value,
         })),
         ...(index === 0
-          ? cycleServices.map((item) => ({
+          ? filteredServices.map((item) => ({
               name: services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço",
               type: "Serviço terceirizado",
               quantity: "Avulso",
@@ -813,6 +835,7 @@ export function BillingV2Module() {
               setClientId(value);
               setCycleId("");
               setCycleBranchId("");
+              setResidueFilterId("all");
             }}
           >
             <SelectTrigger>
@@ -900,10 +923,19 @@ export function BillingV2Module() {
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Total do boletim</p>
-                <p className="font-semibold text-primary">{money(totals.total)}</p>
+                <p className="font-semibold text-primary">{money(filteredTotals.total)}</p>
               </div>
             </div>
             <div className="mt-5 flex flex-wrap justify-center gap-2 border-t pt-4">
+              <div className="min-w-56">
+                <Select value={residueFilterId} onValueChange={setResidueFilterId}>
+                  <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os resíduos</SelectItem>
+                    {residues.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
               <Button onClick={() => void generatePdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF</Button>
             </div>
@@ -1291,13 +1323,13 @@ export function BillingV2Module() {
                 client={clientName}
                 cycle={cycle}
                 branches={branches}
-                placements={placements}
-                movements={movements.filter((item) => item.confirmed)}
+                placements={filteredPlacements}
+                movements={filteredMovements.filter((item) => item.confirmed)}
                 equipment={equipment}
                 residues={residues}
                 services={services}
-                cycleServices={cycleServices}
-                totals={totals}
+                cycleServices={filteredServices}
+                totals={filteredTotals}
               />
             </TabsContent>
           </Tabs>
