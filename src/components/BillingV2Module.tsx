@@ -193,6 +193,7 @@ export function BillingV2Module() {
   });
   const [outgoingPlacementIds, setOutgoingPlacementIds] = useState<string[]>([]);
   const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
+  const [continuePreviousSetup, setContinuePreviousSetup] = useState(true);
   const savingMovementRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
@@ -262,6 +263,22 @@ export function BillingV2Module() {
         .limit(8);
       if (error) throw error;
       return (data || []) as Cycle[];
+    },
+  });
+  const previousClosedCycleQuery = useQuery({
+    queryKey: ["billing-v2-previous-closed", clientId, cycleBranchId],
+    enabled: Boolean(clientId && cycleBranchId && !cycleId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("branch_id", cycleBranchId)
+        .eq("status", "closed")
+        .order("finalized_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as Cycle | null;
     },
   });
   const branchesQuery = query<Branch>(["billing-v2-branches", clientId], "client_branches", (q) =>
@@ -367,6 +384,19 @@ export function BillingV2Module() {
       return (data || []) as CycleService[];
     },
   });
+  const previousClosedPlacementsQuery = useQuery({
+    queryKey: ["billing-v2-previous-closed-placements", previousClosedCycleQuery.data?.id],
+    enabled: Boolean(previousClosedCycleQuery.data?.id && !cycleId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_v2_placements" as any) as any)
+        .select("*")
+        .eq("cycle_id", previousClosedCycleQuery.data!.id)
+        .is("ended_on", null)
+        .order("started_on");
+      if (error) throw error;
+      return (data || []) as Placement[];
+    },
+  });
   const branches = branchesQuery.data || [],
     recentBranches = recentBranchesQuery.data || [],
     equipment = equipmentQuery.data || [],
@@ -377,6 +407,8 @@ export function BillingV2Module() {
     outsourcedCompanies = outsourcedCompaniesQuery.data || [],
     outsourcedCompanyServices = outsourcedCompanyServicesQuery.data || [],
     cycleServices = cycleServicesQuery.data || [],
+    previousClosedCycle = previousClosedCycleQuery.data || null,
+    previousClosedPlacements = previousClosedPlacementsQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
   const residuesForBranch = (branchId: string) =>
     residues.filter((item) => !item.branch_id || item.branch_id === branchId);
@@ -431,6 +463,44 @@ export function BillingV2Module() {
         .select("id")
         .single();
       if (error) throw error;
+      if (continuePreviousSetup && previousClosedCycle) {
+        const { data: sourcePlacements, error: sourceError } = await (supabase.from("billing_v2_placements" as any) as any)
+          .select("equipment_id,waste_residue_id,quantity,observation")
+          .eq("cycle_id", previousClosedCycle.id)
+          .is("ended_on", null);
+        if (sourceError) {
+          await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
+          throw sourceError;
+        }
+        if (sourcePlacements?.length) {
+          const equipmentIds = sourcePlacements.map((item: Placement) => item.equipment_id);
+          const { data: currentEquipment, error: equipmentError } = await (supabase.from("waste_equipment" as any) as any)
+            .select("id,monthly_rental_rate")
+            .in("id", equipmentIds);
+          if (equipmentError) {
+            await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
+            throw equipmentError;
+          }
+          const rates = new Map((currentEquipment || []).map((item: { id: string; monthly_rental_rate: number }) => [item.id, item.monthly_rental_rate]));
+          const { error: copyError } = await (supabase.from("billing_v2_placements" as any) as any).insert(
+            sourcePlacements.map((item: Placement) => ({
+              cycle_id: data.id,
+              client_id: clientId,
+              branch_id: cycleBranchId,
+              equipment_id: item.equipment_id,
+              waste_residue_id: item.waste_residue_id,
+              started_on: periodStart,
+              quantity: Number(item.quantity || 0),
+              monthly_rental_rate: Number(rates.get(item.equipment_id) || 0),
+              observation: item.observation,
+            })),
+          );
+          if (copyError) {
+            await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
+            throw copyError;
+          }
+        }
+      }
       return data.id as string;
     },
     onSuccess: (id) => {
@@ -439,7 +509,7 @@ export function BillingV2Module() {
       qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       setTab("locacoes");
-      toast.success("Novo boletim aberto para edição.");
+      toast.success(continuePreviousSetup && previousClosedCycle ? "Novo boletim aberto com os equipamentos que permaneceram no pátio." : "Novo boletim aberto vazio para edição.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -524,11 +594,11 @@ export function BillingV2Module() {
         throw Error("Este boletim pertence a outra filial/pátio.");
       const hasOutgoing = selectedOutgoingPlacements.length > 0;
       const hasIncoming = incomingEquipmentIds.length > 0;
-      if (hasOutgoing !== hasIncoming)
-        throw Error("Para registrar a troca, informe os equipamentos no local e os equipamentos colocados.");
+      if (!hasOutgoing && hasIncoming)
+        throw Error("Selecione ao menos um equipamento em Retirada antes de registrar uma colocação.");
       if (hasOutgoing && !Number.isInteger(outgoingQuantity))
         throw Error("A quantidade dos equipamentos em locação deve ser inteira para uma troca em lote.");
-      if (hasOutgoing && incomingEquipmentIds.length !== outgoingQuantity)
+      if (hasOutgoing && hasIncoming && incomingEquipmentIds.length !== outgoingQuantity)
         throw Error(`Selecione ${outgoingQuantity} equipamento(s) colocado(s) para concluir esta troca.`);
 
       let incomingIndex = 0;
@@ -548,7 +618,7 @@ export function BillingV2Module() {
         cycle_id: cycleId,
         branch_id: movementForm.branchId,
         equipment_id: pair.placement?.equipment_id || null,
-        replacement_equipment_id: pair.replacementEquipmentId,
+        replacement_equipment_id: pair.replacementEquipmentId || null,
         waste_residue_id: movementForm.residueId || null,
         occurred_on: movementForm.date,
         service_order: movementForm.order || null,
@@ -573,6 +643,13 @@ export function BillingV2Module() {
       // A troca já atualiza a relação de equipamentos no pátio. A confirmação
       // da tabela abaixo controla exclusivamente se ela gera valor no BM.
       if (hasOutgoing) {
+        if (!hasIncoming) {
+          const { error: endError } = await (supabase.from("billing_v2_placements" as any) as any)
+            .update({ ended_on: movementForm.date })
+            .in("id", selectedOutgoingPlacements.map((placement) => placement.id));
+          if (endError) throw endError;
+          return;
+        }
         let replacementIndex = 0;
         for (const placement of selectedOutgoingPlacements) {
           const quantity = Number(placement.quantity || 0);
@@ -952,7 +1029,7 @@ export function BillingV2Module() {
           </Select>
         </Field>
         <Field label="Filial ou pátio do boletim">
-          <Select value={cycleBranchId} onValueChange={setCycleBranchId} disabled={Boolean(cycleId)}>
+          <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); setContinuePreviousSetup(true); }} disabled={Boolean(cycleId)}>
             <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
             <SelectContent>
               {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
@@ -971,6 +1048,31 @@ export function BillingV2Module() {
         <Field label="Fim do boletim">
           <Input type="date" value={periodEnd} min={periodStart} onChange={(event) => setPeriodEnd(event.target.value)} />
         </Field>
+        {!cycleId && cycleBranchId && (
+          <div className="md:col-span-4 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+            {previousClosedCycleQuery.isLoading ? (
+              <p className="text-muted-foreground">Consultando o último boletim fechado deste pátio…</p>
+            ) : previousClosedCycle ? (
+              <>
+                <p className="font-medium">Último boletim fechado: {bulletinNumber(previousClosedCycle.bulletin_number)}</p>
+                <p className="mt-1 text-muted-foreground">
+                  {previousClosedPlacements.length
+                    ? `${previousClosedPlacements.length} registro(s) de equipamento ficaram no local. Você pode trazê-los com os valores atuais do cadastro.`
+                    : "Nenhum equipamento ficou em locação nesse boletim."}
+                </p>
+                <label className="mt-3 flex cursor-pointer items-center gap-2 font-medium">
+                  <Checkbox checked={continuePreviousSetup} onCheckedChange={(checked) => setContinuePreviousSetup(Boolean(checked))} />
+                  Trazer os equipamentos que ficaram no local
+                </label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Desmarque para iniciar este boletim vazio. Movimentações, pesos, serviços e totais anteriores nunca são copiados.
+                </p>
+              </>
+            ) : (
+              <p className="text-muted-foreground">Não há boletim fechado anterior para este pátio. O novo boletim será iniciado vazio.</p>
+            )}
+          </div>
+        )}
         <Button className="self-end" onClick={() => openCycle.mutate()}>
           <FilePlus2 className="mr-2 h-4 w-4" />
           Criar novo boletim
@@ -1312,8 +1414,15 @@ export function BillingV2Module() {
                   </div>
                   {(outgoingPlacementIds.length > 0 || incomingEquipmentIds.length > 0) && (
                     <p className="md:col-span-4 text-sm text-muted-foreground">
-                      Troca: {number(outgoingQuantity)} equipamento(s) no local por {incomingEquipmentIds.length} equipamento(s) colocado(s).
+                      {incomingEquipmentIds.length
+                        ? `Troca: ${number(outgoingQuantity)} equipamento(s) retirado(s) por ${incomingEquipmentIds.length} equipamento(s) colocado(s).`
+                        : `Retirada: ${number(outgoingQuantity)} equipamento(s) sairá(ão) da locação neste boletim.`}
                       {outgoingQuantity > 0 && ` Peso por equipamento: ${number(Number(movementForm.weight || 0) / outgoingQuantity)} kg.`}
+                    </p>
+                  )}
+                  {outgoingPlacementIds.length > 0 && incomingEquipmentIds.length === 0 && (
+                    <p className="md:col-span-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                      Esta é uma retirada sem colocação. O equipamento não seguirá para o próximo boletim, mas a locação continuará sendo cobrada integralmente neste período.
                     </p>
                   )}
                   <Field label="Observação">
