@@ -30,6 +30,7 @@ type Equipment = {
   equipment_type: string;
   active: boolean;
   monthly_rental_rate: number;
+  exchange_rate: number;
 };
 type Residue = { id: string; name: string; active: boolean; branch_id: string | null; default_treatment_rate: number };
 type Cycle = {
@@ -69,6 +70,7 @@ type Movement = {
   weight_kg: number;
   confirmed: boolean;
   treatment_rate: number;
+  exchange_rate: number;
   observation: string | null;
 };
 type Service = { id: string; name: string; active: boolean };
@@ -284,7 +286,7 @@ export function BillingV2Module() {
     "waste_equipment",
     (q) =>
       q
-        .select("id,branch_id,identification,name,equipment_type,active,monthly_rental_rate")
+        .select("id,branch_id,identification,name,equipment_type,active,monthly_rental_rate,exchange_rate")
         .eq("client_id", clientId)
         .eq("active", true)
         .order("name"),
@@ -363,18 +365,6 @@ export function BillingV2Module() {
         .eq("cycle_id", cycleId);
       if (error) throw error;
       return (data || []) as CycleService[];
-    },
-  });
-  const clientSettingsQuery = useQuery({
-    queryKey: ["billing-v2-client-settings", clientId],
-    enabled: Boolean(clientId),
-    queryFn: async () => {
-      const { data, error } = await (supabase.from("waste_client_billing_settings" as any) as any)
-        .select("exchange_rate")
-        .eq("client_id", clientId)
-        .maybeSingle();
-      if (error) throw error;
-      return data as { exchange_rate: number } | null;
     },
   });
   const branches = branchesQuery.data || [],
@@ -573,6 +563,9 @@ export function BillingV2Module() {
         // estiver pendente, a movimentação fica registrada, mas não entra no BM.
         confirmed: false,
         treatment_rate: treatmentRate,
+        exchange_rate: Number(
+          equipment.find((item) => item.id === pair.placement?.equipment_id)?.exchange_rate || 0,
+        ),
       }));
       const { error } = await (supabase.from("billing_v2_movements" as any) as any).insert(movementRows);
       if (error) throw error;
@@ -647,10 +640,12 @@ export function BillingV2Module() {
   const updateMovement = useMutation({
     mutationFn: async ({ id, payload }: { id: string; payload: Partial<Movement> }) => {
       const residue = residues.find((item) => item.id === payload.waste_residue_id);
+      const outgoingEquipment = equipment.find((item) => item.id === payload.equipment_id);
       const { error } = await (supabase.from("billing_v2_movements" as any) as any)
         .update({
           ...payload,
           treatment_rate: Number(residue?.default_treatment_rate || 0),
+          exchange_rate: Number(outgoingEquipment?.exchange_rate || 0),
         })
         .eq("id", id);
       if (error) throw error;
@@ -706,7 +701,6 @@ export function BillingV2Module() {
     qc.invalidateQueries({ queryKey: ["billing-v2-cycle-services", item.id] });
     toast.success(`Boletim ${bulletinNumber(item.bulletin_number)} excluído.`);
   };
-  const fixedRates = { exchange_rate: Number(clientSettingsQuery.data?.exchange_rate || 0) };
   const calculateTotals = (selectedPlacements: Placement[], selectedMovements: Movement[], selectedServices: CycleService[]) => {
     const confirmedMovements = selectedMovements.filter((item) => item.confirmed);
     const rental = selectedPlacements.reduce(
@@ -715,7 +709,10 @@ export function BillingV2Module() {
     );
     const exchanges = confirmedMovements.reduce((sum, item) => sum + Number(item.removed_quantity || 0), 0);
     const weight = confirmedMovements.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
-    const exchange = exchanges * fixedRates.exchange_rate;
+    const exchange = confirmedMovements.reduce(
+      (sum, item) => sum + Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0),
+      0,
+    );
     const treatment = confirmedMovements.reduce(
       (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.treatment_rate || 0),
       0,
@@ -725,7 +722,7 @@ export function BillingV2Module() {
   };
   const totals = useMemo(
     () => calculateTotals(placements, movements, cycleServices),
-    [placements, movements, cycleServices, fixedRates.exchange_rate],
+    [placements, movements, cycleServices],
   );
   const filteredPlacements = useMemo(
     () => residueFilterId === "all" ? placements : placements.filter((item) => item.waste_residue_id === residueFilterId),
@@ -738,7 +735,7 @@ export function BillingV2Module() {
   const filteredServices = residueFilterId === "all" ? cycleServices : [];
   const filteredTotals = useMemo(
     () => calculateTotals(filteredPlacements, filteredMovements, filteredServices),
-    [filteredPlacements, filteredMovements, filteredServices, fixedRates.exchange_rate],
+    [filteredPlacements, filteredMovements, filteredServices],
   );
   const selectedResidueName = residueFilterId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === residueFilterId)?.name || "Resíduo selecionado";
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
@@ -857,7 +854,7 @@ export function BillingV2Module() {
           name: `Troca · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id || ""))}`,
           type: item.replacement_equipment_id ? `Entrada: ${equipmentName(equipment.find((entry) => entry.id === item.replacement_equipment_id || ""))}` : "Troca",
           quantity: `${number(Number(item.removed_quantity))} un.`,
-          value: Number(item.removed_quantity || 0) * fixedRates.exchange_rate,
+          value: Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0),
         })),
         ...Object.values(treatmentByResidue).filter((item) => item.weight > 0).map((item) => ({
           name: residues.find((entry) => entry.id === item.residueId)?.name || "Tratamento de resíduos",
@@ -1422,7 +1419,7 @@ export function BillingV2Module() {
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Locação e troca são valores do cliente. O tratamento usa o valor do resíduo
+                  Locação e troca são valores individuais do equipamento. O tratamento usa o valor do resíduo
                   definido para este pátio em Configurações de movimentação.
                 </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -1430,7 +1427,7 @@ export function BillingV2Module() {
                     Locação: <strong>valor individual de cada equipamento</strong>
                   </div>
                   <div className="rounded-md border p-3 text-sm">
-                    Troca: <strong>{money(fixedRates.exchange_rate)}</strong>
+                    Troca: <strong>valor do equipamento que saiu</strong>
                   </div>
                 </div>
               </Card>

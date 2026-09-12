@@ -55,6 +55,7 @@ type Equipment = {
   plate: string | null;
   active: boolean;
   monthly_rental_rate: number;
+  exchange_rate: number;
 };
 type EquipmentOption = {
   id: string;
@@ -298,6 +299,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     capacity: "",
     capacityUnit: "m3",
     rentalRate: "0",
+    exchangeRate: "0",
   });
   const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "" });
   const [move, setMove] = useState({
@@ -571,6 +573,8 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         throw Error("Selecione a filial ou pátio deste equipamento.");
       if (!Number.isFinite(Number(eqForm.rentalRate)) || Number(eqForm.rentalRate) < 0)
         throw Error("Informe um valor de locação válido.");
+      if (!Number.isFinite(Number(eqForm.exchangeRate)) || Number(eqForm.exchangeRate) < 0)
+        throw Error("Informe um valor de troca válido.");
       const payload = {
         client_id: clientId,
         branch_id: eqForm.branchId || null,
@@ -581,6 +585,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         capacity_value: eqForm.capacity ? Number(eqForm.capacity) : null,
         capacity_unit: eqForm.capacityUnit,
         monthly_rental_rate: Number(eqForm.rentalRate || 0),
+        exchange_rate: Number(eqForm.exchangeRate || 0),
       };
       const query = supabase.from("waste_equipment" as any) as any;
       const { error } = editingEquipment
@@ -618,6 +623,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         capacity: "",
         capacityUnit: "m3",
         rentalRate: "0",
+        exchangeRate: "0",
       });
       refreshClient();
       refreshEquipmentOptions();
@@ -1711,6 +1717,16 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       placeholder="0,00"
                     />
                   </Field>
+                  <Field label="Valor da troca">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={eqForm.exchangeRate}
+                      onChange={(event) => setEqForm({ ...eqForm, exchangeRate: event.target.value })}
+                      placeholder="0,00"
+                    />
+                  </Field>
                   <div className="flex gap-2 self-end">
                     <Button onClick={() => addEquipment.mutate()}>
                       {editingEquipment ? "Salvar" : "Cadastrar"}
@@ -1728,6 +1744,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                           capacity: "",
                           capacityUnit: "m3",
                           rentalRate: "0",
+                          exchangeRate: "0",
                           });
                         }}
                       >
@@ -1738,7 +1755,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Valor da locação", "Ações"]}
+                headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Valor da locação", "Valor da troca", "Ações"]}
                 rows={equipment
                   .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
                   .map((e) => [
@@ -1752,6 +1769,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       ? `${n(e.capacity_m3)} m³`
                       : "—",
                   money(Number(e.monthly_rental_rate || 0)),
+                  money(Number(e.exchange_rate || 0)),
                   <div className="flex gap-1">
                     <Button
                       size="icon"
@@ -1772,6 +1790,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                                 : String(e.capacity_m3),
                           capacityUnit: e.capacity_value !== null ? e.capacity_unit : "m3",
                           rentalRate: String(Number(e.monthly_rental_rate || 0)),
+                          exchangeRate: String(Number(e.exchange_rate || 0)),
                         });
                       }}
                     >
@@ -1873,7 +1892,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               <ResidueBranchConfig clientId={clientId} branches={branches} residues={residues} onSaved={refreshClient} />
             </TabsContent>
             <TabsContent value="valores" className="space-y-4">
-              <ClientMovementPrices clientId={clientId} />
+              <Card className="max-w-3xl p-4">
+                <h2 className="font-semibold">Valor por troca</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  O valor da troca é definido individualmente em cada equipamento, no Cadastro de equipamentos. Assim, cada filial ou pátio pode ter valores diferentes e o BM usa o valor do equipamento que saiu.
+                </p>
+              </Card>
             </TabsContent>
             {canConfigureMovements && (
               <TabsContent value="configuracoes" className="space-y-4">
