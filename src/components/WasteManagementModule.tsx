@@ -56,6 +56,7 @@ type Equipment = {
   active: boolean;
   monthly_rental_rate: number;
   exchange_rate: number;
+  default_waste_residue_id: string | null;
 };
 type EquipmentOption = {
   id: string;
@@ -300,7 +301,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     capacityUnit: "m3",
     rentalRate: "0",
   });
-  const [exchangeForm, setExchangeForm] = useState({ branchId: "", equipmentId: "", rate: "0" });
+  const [exchangeForm, setExchangeForm] = useState({ branchId: "", equipmentId: "", residueId: "", rate: "0" });
   const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "" });
   const [move, setMove] = useState({
     placementOrder: "",
@@ -493,6 +494,14 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const equipmentForExchangeScope = equipment.filter((item) =>
     exchangeForm.branchId === "company" ? !item.branch_id : item.branch_id === exchangeForm.branchId,
   );
+  const selectedExchangeEquipment = equipmentForExchangeScope.find(
+    (item) => item.id === exchangeForm.equipmentId,
+  );
+  const residuesForExchangeEquipment = residues.filter(
+    (residue) =>
+      residue.active &&
+      (!residue.branch_id || residue.branch_id === selectedExchangeEquipment?.branch_id),
+  );
   const outsourcedCompanyForService = (serviceId: string) =>
     outsourcedCompanyServices.find((link) => link.waste_service_id === serviceId)
       ?.outsourced_company_id || "";
@@ -636,12 +645,15 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       if (!Number.isFinite(Number(exchangeForm.rate)) || Number(exchangeForm.rate) < 0)
         throw Error("Informe um valor de troca válido.");
       const { error } = await (supabase.from("waste_equipment" as any) as any)
-        .update({ exchange_rate: Number(exchangeForm.rate || 0) })
+        .update({
+          exchange_rate: Number(exchangeForm.rate || 0),
+          default_waste_residue_id: exchangeForm.residueId || null,
+        })
         .eq("id", selectedEquipment.id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Valor de troca atualizado.");
+      toast.success("Configuração de troca atualizada.");
       refreshClient();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -1899,11 +1911,11 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 <p className="mt-1 text-sm text-muted-foreground">
                   Selecione o pátio ou a empresa sem filial, depois o equipamento. O BM usa este valor quando esse equipamento for retirado em uma troca.
                 </p>
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <Field label="Filial, pátio ou empresa">
                     <Select
                       value={exchangeForm.branchId}
-                      onValueChange={(value) => setExchangeForm({ branchId: value, equipmentId: "", rate: "0" })}
+                      onValueChange={(value) => setExchangeForm({ branchId: value, equipmentId: "", residueId: "", rate: "0" })}
                     >
                       <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                       <SelectContent>
@@ -1920,7 +1932,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       disabled={!exchangeForm.branchId}
                       onValueChange={(value) => {
                         const selected = equipmentForExchangeScope.find((item) => item.id === value);
-                        setExchangeForm({ ...exchangeForm, equipmentId: value, rate: String(Number(selected?.exchange_rate || 0)) });
+                        setExchangeForm({
+                          ...exchangeForm,
+                          equipmentId: value,
+                          residueId: selected?.default_waste_residue_id || "",
+                          rate: String(Number(selected?.exchange_rate || 0)),
+                        });
                       }}
                     >
                       <SelectTrigger><SelectValue placeholder="Selecionar equipamento" /></SelectTrigger>
@@ -1929,6 +1946,23 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                           <SelectItem key={item.id} value={item.id}>
                             {[item.identification, item.name, item.equipment_type].filter(Boolean).join(" · ")}
                           </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Resíduo padrão da troca">
+                    <Select
+                      value={exchangeForm.residueId || "none"}
+                      disabled={!exchangeForm.equipmentId}
+                      onValueChange={(value) =>
+                        setExchangeForm({ ...exchangeForm, residueId: value === "none" ? "" : value })
+                      }
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecionar resíduo" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Não definir resíduo</SelectItem>
+                        {residuesForExchangeEquipment.map((residue) => (
+                          <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1949,9 +1983,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
                 {exchangeForm.branchId && (
                   <ActionTable
-                    headers={["Equipamento", "Valor da troca"]}
+                    headers={["Equipamento", "Resíduo padrão", "Valor da troca"]}
                     rows={equipmentForExchangeScope.map((item) => [
                       [item.identification, item.name, item.equipment_type].filter(Boolean).join(" · "),
+                      residues.find((residue) => residue.id === item.default_waste_residue_id)?.name || "Não definido",
                       money(Number(item.exchange_rate || 0)),
                     ])}
                   />
