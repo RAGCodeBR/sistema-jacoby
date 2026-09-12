@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const allAdminPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "reports", "portal", "calendar", "users", "trash", "settings"];
+const allAdminPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "outsourced", "reports", "documents", "portal_units", "portal_reports", "billing", "movement_settings", "calendar", "users", "trash", "settings"];
 const clientPermissions = ["portal"];
 
 function response(body: Record<string, unknown>, status = 200) {

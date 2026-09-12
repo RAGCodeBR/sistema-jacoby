@@ -34,7 +34,7 @@ function Kpi({ label, value, icon: Icon, color }: { label: string; value: number
 }
 
 function ReportsPage() {
-  const { isAdmin, loading } = useAuth();
+  const { hasPermission, loading } = useAuth();
   const { data: tasks = [] } = useTasks();
   const { data: profiles = [] } = useProfiles();
   const { data: clients = [] } = useClients();
@@ -65,7 +65,7 @@ function ReportsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
 
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Carregando…</div>;
-  if (!isAdmin) return <Navigate to="/dashboard" />;
+  if (!hasPermission("reports")) return <Navigate to="/dashboard" />;
 
   const matchesStatus = (p: any) => {
     const active = p.is_active !== false;

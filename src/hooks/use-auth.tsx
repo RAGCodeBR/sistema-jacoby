@@ -34,7 +34,7 @@ const AuthContext = createContext<AuthCtx | undefined>(undefined);
 // GitHub Pages can be opened before the new Supabase project is configured.
 // In that narrow case, authentication stays only in this browser profile.
 export const isStaticPreview = import.meta.env.VITE_GITHUB_PAGES === "true" && !import.meta.env.VITE_SUPABASE_URL;
-const previewPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "reports", "portal", "calendar", "users", "trash", "settings"];
+const previewPermissions = ["dashboard", "tasks", "notes", "import_ata", "clients", "outsourced", "reports", "documents", "portal", "portal_units", "portal_reports", "billing", "movement_settings", "calendar", "users", "trash", "settings"];
 const localAccountsKey = "jacoby-local-accounts-v1";
 const localSessionKey = "jacoby-local-session-v1";
 const localAuthChanged = "jacoby-local-auth-changed";
@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: link } = await (supabase.from("client_user_links" as any) as any).select("client_id").eq("user_id", uid).maybeSingle();
     setClientId(link?.client_id ?? null);
     const { data: access } = await (supabase.from("user_permissions") as any).select("permissions").eq("user_id", uid).maybeSingle();
-    setPermissions(admin ? ["dashboard", "tasks", "notes", "import_ata", "clients", "reports", "portal", "calendar", "users", "trash", "settings"] : (access?.permissions ?? []));
+    setPermissions(admin ? previewPermissions : (access?.permissions ?? []));
     setLoading(false);
   };
 

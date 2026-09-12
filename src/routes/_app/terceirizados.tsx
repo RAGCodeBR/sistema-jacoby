@@ -38,7 +38,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function OutsourcedCompaniesPage() {
-  const { isAdmin, loading, user } = useAuth();
+  const { hasPermission, loading, user } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<OutsourcedCompany | null>(null);
@@ -95,7 +95,7 @@ function OutsourcedCompaniesPage() {
     if (error) toast.error(error.message); else { toast.success("Terceirizado excluído."); void qc.invalidateQueries({ queryKey: ["outsourced-companies"] }); }
   };
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Carregando…</div>;
-  if (!isAdmin) return <Navigate to="/dashboard" />;
+  if (!hasPermission("outsourced")) return <Navigate to="/dashboard" />;
   const visible = companies.filter((company) => `${company.legal_name} ${company.trade_name || ""} ${company.cnpj || ""}`.toLocaleLowerCase("pt-BR").includes(search.trim().toLocaleLowerCase("pt-BR")));
   return <div className="mx-auto max-w-7xl space-y-6 p-6">
     <header><p className="text-sm font-medium text-primary">Cadastros</p><h1 className="text-2xl font-bold">Terceirizados</h1><p className="mt-1 text-sm text-muted-foreground">Empresas PJ responsáveis por tratamento, destinação ou transporte de resíduos.</p></header>

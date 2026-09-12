@@ -18,9 +18,18 @@ import { Archive, KeyRound, Plus, ShieldCheck, User as UserIcon, UserCheck, User
 export const Route = createFileRoute("/_app/users")({ component: UsersPage });
 
 const ACCESS_OPTIONS = [
-  ["dashboard", "Dashboard"], ["tasks", "Tarefas"],
-  ["clients", "Clientes"], ["reports", "Relatórios"], ["portal", "Portal do cliente"], ["calendar", "Calendário"],
-  ["trash", "Lixeira"], ["settings", "Personalizar"],
+  ["dashboard", "Dashboard"],
+  ["tasks", "Gestão de Projetos"],
+  ["clients", "Clientes"],
+  ["outsourced", "Terceirizados"],
+  ["reports", "Relatórios"],
+  ["documents", "Documentos"],
+  ["portal_units", "Portal do Cliente · Unidades e pátios"],
+  ["portal_reports", "Portal do Cliente · Relatórios"],
+  ["billing", "Faturamento"],
+  ["movement_settings", "Configurações de movimentação"],
+  ["trash", "Lixeira"],
+  ["settings", "Personalizar"],
 ] as const;
 type Role = "admin" | "collaborator" | "client";
 type FormState = { fullName: string; email: string; password: string; role: Role; permissions: string[]; clientId: string };
@@ -34,7 +43,7 @@ function AccessForm({ value, onChange, includeCredentials = false, passwordRequi
     {includeCredentials && <><div className="space-y-2"><Label>Nome completo</Label><Input value={value.fullName} onChange={(e) => onChange({ ...value, fullName: e.target.value })} required /></div><div className="space-y-2"><Label>Login (e-mail)</Label><Input type="email" value={value.email} onChange={(e) => onChange({ ...value, email: e.target.value })} required /></div><div className="space-y-2"><Label>{passwordRequired ? "Senha provisória" : "Nova senha (opcional)"}</Label><Input type="password" minLength={6} autoComplete="new-password" value={value.password} onChange={(e) => onChange({ ...value, password: e.target.value })} required={passwordRequired} placeholder={passwordRequired ? "Mínimo de 6 caracteres" : "Deixe em branco para manter a senha atual"} />{!passwordRequired && <p className="text-xs text-muted-foreground">Por segurança, a senha anterior não é exibida. Preencha apenas se quiser substituí-la.</p>}</div></>}
     <div className="space-y-2"><Label>Categoria</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value.role} onChange={(e) => onChange({ ...value, role: e.target.value as Role, permissions: e.target.value === "client" ? ["portal"] : value.permissions })}><option value="collaborator">Colaboradores</option><option value="client">Cliente</option><option value="admin">Administrador</option></select></div>
     {value.role === "client" && <div className="space-y-2"><Label>Cliente vinculado</Label><select required className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value.clientId} onChange={(e) => onChange({ ...value, clientId: e.target.value })}><option value="">Selecione o cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><p className="text-xs text-muted-foreground">Este usuário verá somente as tarefas e faturas deste cliente.</p></div>}
-    <div className="space-y-2"><Label>Acessos do sistema</Label><p className="text-xs text-muted-foreground">Administradores possuem acesso completo automaticamente.</p><div className="grid grid-cols-2 gap-2 rounded-md border p-3">{ACCESS_OPTIONS.map(([key, label]) => <label key={key} className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={value.role === "admin" || value.permissions.includes(key)} disabled={value.role === "admin"} onCheckedChange={() => toggle(key)} />{label}</label>)}</div></div>
+    <div className="space-y-2"><Label>Acessos do sistema</Label><p className="text-xs text-muted-foreground">Marque somente as áreas que este colaborador poderá usar. Usuários e Arquivos do OneDrive continuam exclusivos da administradora.</p><div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">{ACCESS_OPTIONS.map(([key, label]) => <label key={key} className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={value.role === "admin" || value.permissions.includes(key)} disabled={value.role === "admin" || value.role === "client"} onCheckedChange={() => toggle(key)} />{label}</label>)}</div></div>
   </div>;
 }
 

@@ -57,49 +57,35 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
   ownerOnly?: boolean;
+  permission?: string;
   tab?: "faturamento2" | "configuracoes";
 };
 const allNav: readonly NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks },
-  { to: "/clients", label: "Clientes", icon: Building2 },
-  { to: "/terceirizados", label: "Terceirizados", icon: Factory, adminOnly: true },
-  { to: "/reports", label: "Relatórios", icon: BarChart3, adminOnly: true },
-  { to: "/portal/documentos", label: "Documentos", icon: FileText },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" },
+  { to: "/tasks", label: "Gestão de Projetos", icon: ListChecks, permission: "tasks" },
+  { to: "/clients", label: "Clientes", icon: Building2, permission: "clients" },
+  { to: "/terceirizados", label: "Terceirizados", icon: Factory, permission: "outsourced" },
+  { to: "/reports", label: "Relatórios", icon: BarChart3, permission: "reports" },
+  { to: "/portal/documentos", label: "Documentos", icon: FileText, permission: "documents" },
   { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
-  { to: "/portal/residuos", label: "Faturamento", icon: Recycle, adminOnly: true, tab: "faturamento2" },
-  { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, adminOnly: true, tab: "configuracoes" },
+  { to: "/portal/residuos", label: "Faturamento", icon: Recycle, permission: "billing", tab: "faturamento2" },
+  { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, permission: "movement_settings", tab: "configuracoes" },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
-  { to: "/trash", label: "Lixeira", icon: Trash2 },
-  { to: "/settings", label: "Personalizar", icon: Settings },
+  { to: "/trash", label: "Lixeira", icon: Trash2, permission: "trash" },
+  { to: "/settings", label: "Personalizar", icon: Settings, permission: "settings" },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, isAdmin, isClient, hasPermission } = useAuth();
   const nav = useMemo(() => {
-    const accessByPath: Record<string, string> = {
-      "/dashboard": "dashboard",
-      "/tasks": "tasks",
-      "/clients": "clients",
-      "/terceirizados": "clients",
-      "/reports": "reports",
-      "/portal/documentos": "portal",
-      "/arquivos": "documents",
-      "/portal": "portal",
-      "/portal/residuos": "portal",
-      "/calendario": "calendar",
-      "/users": "users",
-      "/trash": "trash",
-      "/settings": "settings",
-    };
     return allNav.filter(
       (item) =>
         (!item.adminOnly || isAdmin) &&
         (!item.ownerOnly || user?.id === FILES_OWNER_ID) &&
-        hasPermission(accessByPath[item.to]),
+        (item.to === "/portal" ? isClient || hasPermission("portal_units") || hasPermission("portal_reports") : !item.permission || hasPermission(item.permission)),
     );
-  }, [isAdmin, hasPermission, user?.id]);
+  }, [isAdmin, isClient, hasPermission, user?.id]);
 
   useEffect(() => {
     if (isAdmin) void (supabase.rpc("jacoby_process_document_alerts") as any);
@@ -170,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {nav.map((n) => {
             if (n.to === "/portal")
               return (
-                <PortalNavGroup expanded={sidebarOpen} active={portalActive} isClient={isClient} />
+                <PortalNavGroup expanded={sidebarOpen} active={portalActive} isClient={isClient} hasPermission={hasPermission} />
               );
             const Active = n.tab
               ? pathname === n.to && activeWasteTab === n.tab
@@ -281,6 +267,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       expanded
                       active={portalActive}
                       isClient={isClient}
+                      hasPermission={hasPermission}
                       onNavigate={() => setSidebarOpen(false)}
                     />
                   );
@@ -363,11 +350,13 @@ function PortalNavGroup({
   expanded,
   active,
   isClient,
+  hasPermission,
   onNavigate,
 }: {
   expanded: boolean;
   active: boolean;
   isClient: boolean;
+  hasPermission: (permission: string) => boolean;
   onNavigate?: () => void;
 }) {
   const item =
@@ -391,18 +380,18 @@ function PortalNavGroup({
         <ChevronDown className="h-4 w-4" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pl-4">
-        <Link to="/portal/unidades" onClick={onNavigate} className={item}>
+        {(isClient || hasPermission("portal_units")) && <Link to="/portal/unidades" onClick={onNavigate} className={item}>
           <MapPinned className="h-4 w-4" />
           Unidades e pátios
-        </Link>
-        <Link
+        </Link>}
+        {(isClient || hasPermission("portal_reports")) && <Link
           to="/portal/residuos"
           search={{ aba: "relatorios" }}
           onClick={onNavigate}
           className={item}
         >
           Relatórios
-        </Link>
+        </Link>}
         {isClient && (
           <Link to="/portal/conta" onClick={onNavigate} className={item}>
             <KeyRound className="h-4 w-4" />

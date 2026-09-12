@@ -241,7 +241,9 @@ function CreatableOptionInput({
 export function WasteManagementModule({ portal = false }: { portal?: boolean }) {
   const qc = useQueryClient();
   const { data: clients = [] } = useClients();
-  const { isAdmin, isClient, clientId: linked, loading } = useAuth();
+  const { isAdmin, isClient, clientId: linked, loading, hasPermission } = useAuth();
+  const canManageBilling = isAdmin || hasPermission("billing");
+  const canConfigureMovements = isAdmin || hasPermission("movement_settings");
   const [clientId, setClientId] = useState(() => {
     if (typeof window === "undefined") return "";
     return sessionStorage.getItem("jacoby:faturamento:cliente") || "";
@@ -1163,7 +1165,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   if (loading || (isClient && !linked))
     return <div className="p-6 text-sm text-muted-foreground">Carregando o portal do cliente…</div>;
   // Mantém o faturamento legado intocado: a versão 2 possui componente e tabelas próprios.
-  if (requestedCatalogTab === "faturamento2" && isAdmin) return <BillingV2Module />;
+  if (requestedCatalogTab === "faturamento2" && canManageBilling) return <BillingV2Module />;
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
       <header className="flex justify-between gap-4">
@@ -1829,7 +1831,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             <TabsContent value="locacao" className="space-y-4">
               <ClientMovementPrices clientId={clientId} mode="rental" />
             </TabsContent>
-            {isAdmin && (
+            {canConfigureMovements && (
               <TabsContent value="configuracoes" className="space-y-4">
                 <Card className="p-4">
                   <h2 className="font-semibold">
