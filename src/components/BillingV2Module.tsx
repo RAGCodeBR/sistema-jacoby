@@ -186,7 +186,6 @@ export function BillingV2Module() {
     order: "",
     weight: "0",
     observation: "",
-    confirmed: false,
   });
   const [outgoingPlacementIds, setOutgoingPlacementIds] = useState<string[]>([]);
   const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
@@ -568,13 +567,17 @@ export function BillingV2Module() {
             ? totalWeight - (totalWeight / pairs.length) * index
             : totalWeight / pairs.length,
         observation: movementForm.observation || null,
-        confirmed: movementForm.confirmed,
+        // A confirmação é feita depois, na própria linha lançada. Enquanto
+        // estiver pendente, a movimentação fica registrada, mas não entra no BM.
+        confirmed: false,
         treatment_rate: treatmentRate,
       }));
       const { error } = await (supabase.from("billing_v2_movements" as any) as any).insert(movementRows);
       if (error) throw error;
 
-      if (hasOutgoing && movementForm.confirmed) {
+      // A troca já atualiza a relação de equipamentos no pátio. A confirmação
+      // da tabela abaixo controla exclusivamente se ela gera valor no BM.
+      if (hasOutgoing) {
         let replacementIndex = 0;
         for (const placement of selectedOutgoingPlacements) {
           const quantity = Number(placement.quantity || 0);
@@ -618,12 +621,24 @@ export function BillingV2Module() {
         order: "",
         weight: "0",
         observation: "",
-        confirmed: false,
       });
       setOutgoingPlacementIds([]);
       setIncomingEquipmentIds([]);
       refresh();
       toast.success("Movimentação registrada.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const toggleMovementConfirmation = useMutation({
+    mutationFn: async ({ id, confirmed }: { id: string; confirmed: boolean }) => {
+      const { error } = await (supabase.from("billing_v2_movements" as any) as any)
+        .update({ confirmed })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, { confirmed }) => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
+      toast.success(confirmed ? "Movimentação confirmada: valores incluídos no BM." : "Movimentação pendente: valores retirados do BM.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1283,12 +1298,6 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
-                  <div className="flex items-end pb-2">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                      <Checkbox checked={movementForm.confirmed} onCheckedChange={(checked) => setMovementForm({ ...movementForm, confirmed: checked === true })} />
-                      Movimentação realizada de fato
-                    </label>
-                  </div>
                   <Button className="self-end" disabled={addMovement.isPending} onClick={() => addMovement.mutate()}>
                     {addMovement.isPending ? "Registrando..." : "Registrar movimentação"}
                   </Button>
@@ -1306,6 +1315,8 @@ export function BillingV2Module() {
                 equipment={equipment}
                 residues={residues}
                 onDelete={(id) => void remove("billing_v2_movements", id)}
+                onConfirmationChange={(id, confirmed) => toggleMovementConfirmation.mutate({ id, confirmed })}
+                changingConfirmationId={toggleMovementConfirmation.isPending ? toggleMovementConfirmation.variables?.id : undefined}
                 />
               </div>
             </TabsContent>
@@ -1418,12 +1429,16 @@ function PlacementTable({
   equipment,
   residues,
   onDelete,
+  onConfirmationChange,
+  changingConfirmationId,
 }: {
   rows: Placement[];
   branches: Branch[];
   equipment: Equipment[];
   residues: Residue[];
   onDelete: (id: string) => void;
+  onConfirmationChange: (id: string, confirmed: boolean) => void;
+  changingConfirmationId?: string;
 }) {
   return (
     <Card className="overflow-x-auto p-4">
@@ -1535,7 +1550,16 @@ function MovementTable({
                 <td className="p-2">{number(Number(row.placed_quantity))}</td>
                 <td className="p-2">{number(Number(row.removed_quantity))}</td>
                 <td className="p-2">{number(Number(row.weight_kg))} kg</td>
-                <td className="p-2">{row.confirmed ? "Sim" : "Pendente"}</td>
+                <td className="p-2">
+                  <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm font-medium">
+                    <Checkbox
+                      checked={row.confirmed}
+                      disabled={changingConfirmationId === row.id}
+                      onCheckedChange={(checked) => onConfirmationChange(row.id, checked === true)}
+                    />
+                    {row.confirmed ? "Gera valor" : "Não gera valor"}
+                  </label>
+                </td>
                 <td className="p-2">
                   <Button variant="ghost" size="icon" onClick={() => onDelete(row.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
