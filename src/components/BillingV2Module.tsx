@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 
 type Branch = { id: string; name: string; cnpj: string | null; address: string | null };
@@ -639,6 +640,23 @@ export function BillingV2Module() {
     onSuccess: (_data, { confirmed }) => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
       toast.success(confirmed ? "Movimentação confirmada: valores incluídos no BM." : "Movimentação pendente: valores retirados do BM.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const updateMovement = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<Movement> }) => {
+      const residue = residues.find((item) => item.id === payload.waste_residue_id);
+      const { error } = await (supabase.from("billing_v2_movements" as any) as any)
+        .update({
+          ...payload,
+          treatment_rate: Number(residue?.default_treatment_rate || 0),
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      refresh();
+      toast.success("Movimentação atualizada. Os valores do BM foram recalculados.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1328,6 +1346,8 @@ export function BillingV2Module() {
                 onDelete={(id) => void remove("billing_v2_movements", id)}
                 onConfirmationChange={(id, confirmed) => toggleMovementConfirmation.mutate({ id, confirmed })}
                 changingConfirmationId={toggleMovementConfirmation.isPending ? toggleMovementConfirmation.variables?.id : undefined}
+                onSave={(id, payload) => updateMovement.mutate({ id, payload })}
+                savingId={updateMovement.isPending ? updateMovement.variables?.id : undefined}
                 />
               </div>
             </TabsContent>
@@ -1507,6 +1527,8 @@ function MovementTable({
   onDelete,
   onConfirmationChange,
   changingConfirmationId,
+  onSave,
+  savingId,
 }: {
   rows: Movement[];
   branches: Branch[];
@@ -1515,10 +1537,48 @@ function MovementTable({
   onDelete: (id: string) => void;
   onConfirmationChange: (id: string, confirmed: boolean) => void;
   changingConfirmationId?: string;
+  onSave: (id: string, payload: Partial<Movement>) => void;
+  savingId?: string;
 }) {
+  const [editing, setEditing] = useState<Movement | null>(null);
+  const [draft, setDraft] = useState({
+    date: "", order: "", residueId: "", outgoingId: "", incomingId: "", placed: "0", removed: "0", weight: "0", observation: "",
+  });
+  const openEditor = (row: Movement) => {
+    setEditing(row);
+    setDraft({
+      date: row.occurred_on,
+      order: row.service_order || "",
+      residueId: row.waste_residue_id || "",
+      outgoingId: row.equipment_id || "",
+      incomingId: row.replacement_equipment_id || "",
+      placed: String(Number(row.placed_quantity || 0)),
+      removed: String(Number(row.removed_quantity || 0)),
+      weight: String(Number(row.weight_kg || 0)),
+      observation: row.observation || "",
+    });
+  };
+  const saveEditor = () => {
+    if (!editing) return;
+    onSave(editing.id, {
+      occurred_on: draft.date,
+      service_order: draft.order || null,
+      waste_residue_id: draft.residueId || null,
+      equipment_id: draft.outgoingId || null,
+      replacement_equipment_id: draft.incomingId || null,
+      placed_quantity: Number(draft.placed || 0),
+      removed_quantity: Number(draft.removed || 0),
+      weight_kg: Number(draft.weight || 0),
+      observation: draft.observation || null,
+    });
+    setEditing(null);
+  };
+  const branchEquipment = editing ? equipment.filter((item) => item.branch_id === editing.branch_id) : [];
+  const branchResidues = editing ? residues.filter((item) => !item.branch_id || item.branch_id === editing.branch_id) : [];
   return (
+    <>
     <Card className="overflow-x-auto p-4">
-      <table className="w-full min-w-[820px] text-sm">
+      <table className="w-full min-w-[980px] text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
             <th className="p-2">Data</th>
@@ -1530,6 +1590,7 @@ function MovementTable({
             <th className="p-2">Colocadas</th>
             <th className="p-2">Removidas</th>
             <th className="p-2">Peso</th>
+            <th className="p-2">Observação</th>
             <th className="p-2">Confirmada</th>
             <th className="p-2" />
           </tr>
@@ -1561,6 +1622,9 @@ function MovementTable({
                 <td className="p-2">{number(Number(row.placed_quantity))}</td>
                 <td className="p-2">{number(Number(row.removed_quantity))}</td>
                 <td className="p-2">{number(Number(row.weight_kg))} kg</td>
+                <td className="max-w-48 p-2 text-sm" title={row.observation || undefined}>
+                  {row.observation || "—"}
+                </td>
                 <td className="p-2">
                   <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm font-medium">
                     <Checkbox
@@ -1572,15 +1636,20 @@ function MovementTable({
                   </label>
                 </td>
                 <td className="p-2">
-                  <Button variant="ghost" size="icon" onClick={() => onDelete(row.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" aria-label="Editar movimentação" onClick={() => openEditor(row)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" aria-label="Excluir movimentação" onClick={() => onDelete(row.id)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))
           ) : (
             <tr>
-              <td className="p-5 text-center text-muted-foreground" colSpan={11}>
+              <td className="p-5 text-center text-muted-foreground" colSpan={12}>
                 Nenhuma movimentação neste boletim.
               </td>
             </tr>
@@ -1588,6 +1657,42 @@ function MovementTable({
         </tbody>
       </table>
     </Card>
+    <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar movimentação</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Filial ou pátio"><Input value={branches.find((item) => item.id === editing?.branch_id)?.name || ""} disabled /></Field>
+          <Field label="Data"><Input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></Field>
+          <Field label="Ordem de serviço"><Input value={draft.order} onChange={(event) => setDraft({ ...draft, order: event.target.value })} /></Field>
+          <Field label="Resíduo">
+            <Select value={draft.residueId || "none"} onValueChange={(value) => setDraft({ ...draft, residueId: value === "none" ? "" : value })}>
+              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sem resíduo</SelectItem>{branchResidues.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Equipamento que saiu">
+            <Select value={draft.outgoingId || "none"} onValueChange={(value) => setDraft({ ...draft, outgoingId: value === "none" ? "" : value })}>
+              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{branchEquipment.map((item) => <SelectItem key={item.id} value={item.id}>{equipmentName(item)}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Equipamento que entrou">
+            <Select value={draft.incomingId || "none"} onValueChange={(value) => setDraft({ ...draft, incomingId: value === "none" ? "" : value })}>
+              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{branchEquipment.map((item) => <SelectItem key={item.id} value={item.id}>{equipmentName(item)}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Quantidade colocada"><Input type="number" min="0" step="1" value={draft.placed} onChange={(event) => setDraft({ ...draft, placed: event.target.value })} /></Field>
+          <Field label="Quantidade removida"><Input type="number" min="0" step="1" value={draft.removed} onChange={(event) => setDraft({ ...draft, removed: event.target.value })} /></Field>
+          <Field label="Peso (kg)"><Input type="number" min="0" step="0.001" value={draft.weight} onChange={(event) => setDraft({ ...draft, weight: event.target.value })} /></Field>
+          <Field label="Observação"><Input value={draft.observation} onChange={(event) => setDraft({ ...draft, observation: event.target.value })} /></Field>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
+          <Button type="button" disabled={savingId === editing?.id} onClick={saveEditor}>{savingId === editing?.id ? "Salvando…" : "Salvar movimentação"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 function Boletim({
