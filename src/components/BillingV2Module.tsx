@@ -880,8 +880,8 @@ export function BillingV2Module() {
         </Button>
       </Card>
       {!cycleId ? (
-        <>
-          <Card className="p-5">
+        <div className="flex flex-col gap-6">
+          <Card className="order-2 p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div>
                 <h2 className="font-semibold">Boletins recentes</h2>
@@ -895,16 +895,16 @@ export function BillingV2Module() {
               </tbody></table>
             </div>
           </Card>
-        <Card className="p-5">
-          <h2 className="font-semibold">Boletins de {clientName}{cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Abra qualquer boletim para continuar a edição, mesmo depois de finalizado.</p>
+        <Card className="order-1 p-5">
+          <h2 className="font-semibold">Resultado da busca · {clientName}{cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Boletins encontrados para o cliente e pátio selecionados.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
               {clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).length ? clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
             </tbody></table>
           </div>
         </Card>
-        </>
+        </div>
       ) : (
         <>
           <Card className="p-5">
