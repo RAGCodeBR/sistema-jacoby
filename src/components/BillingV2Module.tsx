@@ -154,6 +154,7 @@ export function BillingV2Module() {
   const [cycleId, setCycleId] = useState(() => storedBillingView().cycleId || "");
   const [tab, setTab] = useState(() => storedBillingView().tab || "locacoes");
   const [residueFilterId, setResidueFilterId] = useState(() => storedBillingView().residueFilterId || "all");
+  const [billingViewRestored, setBillingViewRestored] = useState(false);
   const [rentalBranchFilter, setRentalBranchFilter] = useState("");
   const [movementBranchFilter, setMovementBranchFilter] = useState("");
   const [placementForm, setPlacementForm] = useState({
@@ -179,15 +180,30 @@ export function BillingV2Module() {
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
 
+  // Em uma recarga causada pelo próprio navegador, a primeira renderização pode
+  // ocorrer no servidor. Restauramos a aba somente depois da hidratação e antes
+  // de aplicar qualquer cliente padrão, para não perder o boletim em edição.
   useEffect(() => {
+    const saved = storedBillingView();
+    if (saved.clientId) setClientId(saved.clientId);
+    if (saved.periodStart) setPeriodStart(saved.periodStart);
+    if (saved.periodEnd) setPeriodEnd(saved.periodEnd);
+    if (saved.cycleBranchId) setCycleBranchId(saved.cycleBranchId);
+    if (saved.cycleId) setCycleId(saved.cycleId);
+    if (saved.tab) setTab(saved.tab);
+    if (saved.residueFilterId) setResidueFilterId(saved.residueFilterId);
+    setBillingViewRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!billingViewRestored) return;
     if (!clientId && clients[0]) setClientId(clients[0].id);
-  }, [clientId, clients]);
+  }, [billingViewRestored, clientId, clients]);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!billingViewRestored || typeof window === "undefined") return;
     sessionStorage.setItem(billingViewStorageKey, JSON.stringify({
       clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId,
     } satisfies BillingViewState));
-  }, [clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId]);
+  }, [billingViewRestored, clientId, periodStart, periodEnd, cycleBranchId, cycleId, tab, residueFilterId]);
   const query = <T,>(key: unknown[], table: string, configure: (request: any) => any) =>
     useQuery({
       queryKey: key,
