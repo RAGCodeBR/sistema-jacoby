@@ -21,6 +21,9 @@ import { ClientBranchesManager } from "@/components/ClientBranchesManager";
 
 export const Route = createFileRoute("/_app/clients/$clientId/edit")({
   component: EditClientPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    aba: search.aba === "documentos" ? "documentos" : undefined,
+  }),
 });
 
 const EMPTY_DEPARTMENTS: ClientDepartment[] = [];
@@ -28,6 +31,9 @@ const EMPTY_EMPLOYEES: ClientDepartmentEmployee[] = [];
 
 function EditClientPage() {
   const { clientId } = Route.useParams();
+  const { aba } = Route.useSearch();
+  const [activeTab, setActiveTab] = useState(aba === "documentos" ? "departments" : "client");
+  useEffect(() => { if (aba === "documentos") setActiveTab("departments"); }, [aba]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: client, isLoading } = useQuery({
@@ -417,7 +423,10 @@ function EditClientPage() {
       </header>
 
       <Card className="p-6">
-        <Tabs defaultValue="client">
+        <Tabs
+          value={activeTab}
+          onValueChange={(tab) => { setActiveTab(tab); navigate({ to: "/clients/$clientId/edit", params: { clientId }, search: tab === "departments" ? { aba: "documentos" } : {}, replace: true }); }}
+        >
           <TabsList>
             <TabsTrigger value="client">Dados do cliente</TabsTrigger>
             <TabsTrigger value="branches">Filiais e pátios</TabsTrigger>

@@ -27,6 +27,7 @@ import {
   MapPinned,
   KeyRound,
   FolderOpen,
+  AlertTriangle,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
@@ -336,7 +337,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
 
       <main className="flex-1 overflow-x-hidden md:pt-0 pt-12">
-        <div className="hidden md:flex sticky top-0 z-30 justify-end gap-2 px-4 py-2 bg-background/80 backdrop-blur border-b">
+        <div className="hidden md:flex sticky top-0 z-30 items-center justify-between px-4 py-2 bg-background/80 backdrop-blur border-b">
+          {isAdmin || hasPermission("dashboard") ? <Link to="/dashboard" className="inline-flex h-9 w-9 items-center justify-center rounded-md text-destructive transition hover:bg-destructive/10" title="Alertas de documentos"><AlertTriangle className="h-5 w-5" /></Link> : <span />}
           <NotificationBell />
         </div>
         {children}
