@@ -2,7 +2,7 @@
  * Fonte única de autenticação e autorização da interface.
  * Expõe sessão, perfil, categoria (admin/colaborador/cliente) e permissões de navegação.
  */
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -127,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [clientId, setClientId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadedProfileUserId = useRef<string | null>(null);
+  const loadingProfileUserId = useRef<string | null>(null);
 
   const loadProfile = async (uid: string) => {
     setLoading(true);
@@ -151,7 +153,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setClientId(link?.client_id ?? null);
     const { data: access } = await (supabase.from("user_permissions") as any).select("permissions").eq("user_id", uid).maybeSingle();
     setPermissions(admin ? previewPermissions : (access?.permissions ?? []));
+    loadedProfileUserId.current = uid;
+    loadingProfileUserId.current = null;
     setLoading(false);
+  };
+
+  const scheduleProfileLoad = (uid: string, force = false) => {
+    // O Supabase pode emitir SIGNED_IN novamente ao renovar a sessão ou ao voltar
+    // para a aba. Isso não é um novo login e não deve desmontar a tela atual.
+    if (!force && (loadedProfileUserId.current === uid || loadingProfileUserId.current === uid)) return;
+    loadingProfileUserId.current = uid;
+    setTimeout(() => void loadProfile(uid), 0);
   };
 
   useEffect(() => {
@@ -179,13 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        // Renovação de token acontece em segundo plano. Não recarregamos o perfil
-        // nessas renovações para evitar a tela inteira de "Carregando" entre páginas.
-        if (event === "SIGNED_IN" || event === "USER_UPDATED") {
-          setLoading(true);
-          setTimeout(() => loadProfile(s.user.id), 0);
-        }
+        if (event === "SIGNED_IN" || event === "USER_UPDATED") scheduleProfileLoad(s.user.id);
       } else {
+        loadedProfileUserId.current = null;
+        loadingProfileUserId.current = null;
         setProfile(null);
         setIsAdmin(false);
         setIsCollaborator(false);
@@ -198,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
-      if (data.session?.user) void loadProfile(data.session.user.id);
+      if (data.session?.user) scheduleProfileLoad(data.session.user.id);
       else setLoading(false);
     });
     return () => sub.subscription.unsubscribe();
@@ -216,7 +225,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = async () => {
     if (isStaticPreview) return;
-    if (user) await loadProfile(user.id);
+    if (user) {
+      loadedProfileUserId.current = null;
+      scheduleProfileLoad(user.id, true);
+    }
   };
   const hasPermission = (permission: string) => isAdmin || permissions.includes(permission);
 
