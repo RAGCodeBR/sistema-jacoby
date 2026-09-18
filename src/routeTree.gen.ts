@@ -33,6 +33,7 @@ import { Route as AppPortalContaRouteImport } from './routes/_app/portal.conta'
 import { Route as AppPortalDocumentosRouteImport } from './routes/_app/portal.documentos'
 import { Route as AppPortalEntregasRouteImport } from './routes/_app/portal.entregas'
 import { Route as AppPortalFinanceiroRouteImport } from './routes/_app/portal.financeiro'
+import { Route as AppPortalMovimentacoesRouteImport } from './routes/_app/portal.movimentacoes'
 import { Route as AppPortalResiduosRouteImport } from './routes/_app/portal.residuos'
 import { Route as AppPortalUnidadesRouteImport } from './routes/_app/portal.unidades'
 import { Route as AppTasksIndexRouteImport } from './routes/_app/tasks.index'
@@ -163,6 +164,11 @@ const AppPortalFinanceiroRoute = AppPortalFinanceiroRouteImport.update({
   path: '/portal/financeiro',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPortalMovimentacoesRoute = AppPortalMovimentacoesRouteImport.update({
+  id: '/portal/movimentacoes',
+  path: '/portal/movimentacoes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPortalResiduosRoute = AppPortalResiduosRouteImport.update({
   id: '/portal/residuos',
   path: '/portal/residuos',
@@ -239,6 +245,7 @@ export interface FileRoutesByFullPath {
   '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
+  '/portal/movimentacoes': typeof AppPortalMovimentacoesRoute
   '/portal/residuos': typeof AppPortalResiduosRoute
   '/portal/unidades': typeof AppPortalUnidadesRoute
   '/tasks/calendar': typeof AppTasksCalendarRoute
@@ -272,6 +279,7 @@ export interface FileRoutesByTo {
   '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
   '/portal/financeiro': typeof AppPortalFinanceiroRoute
+  '/portal/movimentacoes': typeof AppPortalMovimentacoesRoute
   '/portal/residuos': typeof AppPortalResiduosRoute
   '/portal/unidades': typeof AppPortalUnidadesRoute
   '/tasks/calendar': typeof AppTasksCalendarRoute
@@ -309,6 +317,7 @@ export interface FileRoutesById {
   '/_app/portal/documentos': typeof AppPortalDocumentosRoute
   '/_app/portal/entregas': typeof AppPortalEntregasRoute
   '/_app/portal/financeiro': typeof AppPortalFinanceiroRoute
+  '/_app/portal/movimentacoes': typeof AppPortalMovimentacoesRoute
   '/_app/portal/residuos': typeof AppPortalResiduosRoute
   '/_app/portal/unidades': typeof AppPortalUnidadesRoute
   '/_app/tasks/calendar': typeof AppTasksCalendarRoute
@@ -346,6 +355,7 @@ export interface FileRouteTypes {
     | '/portal/documentos'
     | '/portal/entregas'
     | '/portal/financeiro'
+    | '/portal/movimentacoes'
     | '/portal/residuos'
     | '/portal/unidades'
     | '/tasks/calendar'
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/portal/documentos'
     | '/portal/entregas'
     | '/portal/financeiro'
+    | '/portal/movimentacoes'
     | '/portal/residuos'
     | '/portal/unidades'
     | '/tasks/calendar'
@@ -415,6 +426,7 @@ export interface FileRouteTypes {
     | '/_app/portal/documentos'
     | '/_app/portal/entregas'
     | '/_app/portal/financeiro'
+    | '/_app/portal/movimentacoes'
     | '/_app/portal/residuos'
     | '/_app/portal/unidades'
     | '/_app/tasks/calendar'
@@ -605,6 +617,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPortalFinanceiroRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/portal/movimentacoes': {
+      id: '/_app/portal/movimentacoes'
+      path: '/portal/movimentacoes'
+      fullPath: '/portal/movimentacoes'
+      preLoaderRoute: typeof AppPortalMovimentacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/portal/residuos': {
       id: '/_app/portal/residuos'
       path: '/portal/residuos'
@@ -731,6 +750,7 @@ interface AppRouteChildren {
   AppPortalDocumentosRoute: typeof AppPortalDocumentosRoute
   AppPortalEntregasRoute: typeof AppPortalEntregasRoute
   AppPortalFinanceiroRoute: typeof AppPortalFinanceiroRoute
+  AppPortalMovimentacoesRoute: typeof AppPortalMovimentacoesRoute
   AppPortalResiduosRoute: typeof AppPortalResiduosRoute
   AppPortalUnidadesRoute: typeof AppPortalUnidadesRoute
 }
@@ -754,6 +774,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPortalDocumentosRoute: AppPortalDocumentosRoute,
   AppPortalEntregasRoute: AppPortalEntregasRoute,
   AppPortalFinanceiroRoute: AppPortalFinanceiroRoute,
+  AppPortalMovimentacoesRoute: AppPortalMovimentacoesRoute,
   AppPortalResiduosRoute: AppPortalResiduosRoute,
   AppPortalUnidadesRoute: AppPortalUnidadesRoute,
 }
