@@ -13,9 +13,8 @@ function AppLayout() {
     return <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">Carregando…</div>;
   }
   if (!user) return <Navigate to="/auth" />;
-  // Os módulos de entregas e financeiro foram preservados no código, mas ficam
-  // temporariamente fora da navegação. O portal passa a iniciar em Documentos.
-  if (isClient && !pathname.startsWith("/portal/")) return <Navigate to="/portal/documentos" replace />;
+  // O cliente começa pela consulta operacional e navega somente nas áreas do portal.
+  if (isClient && !pathname.startsWith("/portal/")) return <Navigate to="/portal/movimentacoes" replace />;
   return (
     <AppShell>
       <Outlet />

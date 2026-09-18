@@ -28,6 +28,7 @@ import {
   KeyRound,
   FolderOpen,
   AlertTriangle,
+  ClipboardCheck,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
@@ -109,6 +110,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const portalActive =
     pathname === "/portal/unidades" ||
     pathname === "/portal/conta" ||
+    pathname === "/portal/documentos" ||
+    pathname === "/portal/movimentacoes" ||
     (pathname === "/portal/residuos" && activeWasteTab === "relatorios");
   const initials = (profile?.full_name || user?.email || "?").slice(0, 2).toUpperCase();
 
@@ -382,6 +385,14 @@ function PortalNavGroup({
         <ChevronDown className="h-4 w-4" />
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pl-4">
+        {isClient && <Link to="/portal/movimentacoes" onClick={onNavigate} className={item}>
+          <ClipboardCheck className="h-4 w-4" />
+          Movimentações
+        </Link>}
+        {isClient && <Link to="/portal/documentos" onClick={onNavigate} className={item}>
+          <FileText className="h-4 w-4" />
+          Documentos
+        </Link>}
         {(isClient || hasPermission("portal_units")) && <Link to="/portal/unidades" onClick={onNavigate} className={item}>
           <MapPinned className="h-4 w-4" />
           Unidades e pátios
