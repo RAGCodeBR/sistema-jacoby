@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { ClipboardCheck, Recycle, Scale } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_app/portal/movimentacoes")({ component: ClientMovementsPage });
@@ -14,10 +15,12 @@ type Movement = {
   removed_equipment: string | null; placed_equipment: string | null; placed_quantity: number;
   removed_quantity: number; weight_kg: number; service_order: string | null; observation: string | null;
 };
+type Branch = { id: string; name: string };
 const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const formatKg = (value: number) => `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0)} kg`;
 
 function ClientMovementsPage() {
+  const { clientId } = useAuth();
   const { data: movements = [], isLoading } = useQuery({
     queryKey: ["client-confirmed-movements"],
     queryFn: async () => {
@@ -26,8 +29,24 @@ function ClientMovementsPage() {
       return (data ?? []) as Movement[];
     },
   });
+  const { data: clientBranches = [] } = useQuery({
+    queryKey: ["client-movement-branches", clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("client_branches") as any)
+        .select("id,name")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as Branch[];
+    },
+  });
   const years = useMemo(() => Array.from(new Set(movements.map((item) => item.occurred_on.slice(0, 4)))).sort().reverse(), [movements]);
-  const branches = useMemo(() => Array.from(new Set(movements.map((item) => item.branch_name || "Unidade não informada"))).sort(), [movements]);
+  const branches = useMemo(() => Array.from(new Set([
+    ...clientBranches.map((branch) => branch.name),
+    ...movements.map((item) => item.branch_name || "Unidade não informada"),
+  ])).sort(), [clientBranches, movements]);
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [selectedBranch, setSelectedBranch] = useState("all");
