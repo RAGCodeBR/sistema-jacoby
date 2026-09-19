@@ -65,6 +65,7 @@ type Movement = {
   waste_residue_id: string | null;
   occurred_on: string;
   service_order: string | null;
+  mtr_number: string | null;
   placed_quantity: number;
   removed_quantity: number;
   weight_kg: number;
@@ -190,6 +191,7 @@ export function BillingV2Module() {
     residueId: "",
     date: new Date().toISOString().slice(0, 10),
     order: "",
+    mtr: "",
     weight: "0",
     observation: "",
   });
@@ -625,6 +627,7 @@ export function BillingV2Module() {
         waste_residue_id: movementForm.residueId || null,
         occurred_on: movementForm.date,
         service_order: movementForm.order || null,
+        mtr_number: movementForm.mtr.trim() || null,
         placed_quantity: hasOutgoing ? 1 : 0,
         removed_quantity: hasOutgoing ? 1 : 0,
         weight_kg:
@@ -694,6 +697,7 @@ export function BillingV2Module() {
         ...movementForm,
         residueId: "",
         order: "",
+        mtr: "",
         weight: "0",
         observation: "",
       });
@@ -1365,6 +1369,15 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
+                  <Field label="MTR">
+                    <Input
+                      value={movementForm.mtr}
+                      onChange={(event) =>
+                        setMovementForm({ ...movementForm, mtr: event.target.value })
+                      }
+                      placeholder="Número do MTR"
+                    />
+                  </Field>
                   <Field label="Peso (kg)">
                     <Input
                       type="number"
@@ -1670,13 +1683,14 @@ function MovementTable({
 }) {
   const [editing, setEditing] = useState<Movement | null>(null);
   const [draft, setDraft] = useState({
-    date: "", order: "", residueId: "", outgoingId: "", incomingId: "", placed: "0", removed: "0", weight: "0", observation: "",
+    date: "", order: "", mtr: "", residueId: "", outgoingId: "", incomingId: "", placed: "0", removed: "0", weight: "0", observation: "",
   });
   const openEditor = (row: Movement) => {
     setEditing(row);
     setDraft({
       date: row.occurred_on,
       order: row.service_order || "",
+      mtr: row.mtr_number || "",
       residueId: row.waste_residue_id || "",
       outgoingId: row.equipment_id || "",
       incomingId: row.replacement_equipment_id || "",
@@ -1691,6 +1705,7 @@ function MovementTable({
     onSave(editing.id, {
       occurred_on: draft.date,
       service_order: draft.order || null,
+      mtr_number: draft.mtr.trim() || null,
       waste_residue_id: draft.residueId || null,
       equipment_id: draft.outgoingId || null,
       replacement_equipment_id: draft.incomingId || null,
@@ -1741,6 +1756,7 @@ function MovementTable({
           <tr className="border-b text-left text-muted-foreground">
             <th className="p-2">Data</th>
             <th className="p-2">OS</th>
+            <th className="p-2">MTR</th>
             <th className="p-2">Filial/pátio</th>
             <th className="p-2">Equipamento que saiu</th>
             <th className="p-2">Equipamento que entrou</th>
@@ -1762,6 +1778,7 @@ function MovementTable({
                   {new Date(`${row.occurred_on}T12:00:00`).toLocaleDateString("pt-BR")}
                 </td>
                 <td className="p-2">{row.service_order || "—"}</td>
+                <td className="p-2">{row.mtr_number || "—"}</td>
                 <td className="p-2">
                   {branches.find((item) => item.id === row.branch_id)?.name || "—"}
                 </td>
@@ -1819,7 +1836,7 @@ function MovementTable({
             ))
           ) : (
             <tr>
-              <td className="p-5 text-center text-muted-foreground" colSpan={13}>
+              <td className="p-5 text-center text-muted-foreground" colSpan={14}>
                 Nenhuma movimentação neste boletim.
               </td>
             </tr>
@@ -1836,6 +1853,7 @@ function MovementTable({
           <Field label="Filial ou pátio"><Input value={branches.find((item) => item.id === editing?.branch_id)?.name || ""} disabled /></Field>
           <Field label="Data"><Input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></Field>
           <Field label="Ordem de serviço"><Input value={draft.order} onChange={(event) => setDraft({ ...draft, order: event.target.value })} /></Field>
+          <Field label="MTR"><Input value={draft.mtr} onChange={(event) => setDraft({ ...draft, mtr: event.target.value })} placeholder="Número do MTR" /></Field>
           <Field label="Resíduo">
             <Select value={draft.residueId || "none"} onValueChange={(value) => setDraft({ ...draft, residueId: value === "none" ? "" : value })}>
               <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sem resíduo</SelectItem>{branchResidues.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
