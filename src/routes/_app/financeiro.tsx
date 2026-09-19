@@ -78,6 +78,10 @@ const emptyForm = {
   received_on: "",
   financial_notes: "",
 };
+const paymentIsReceived = (item: Pick<FinancialService, "payment_status" | "received_on">) => {
+  const today = new Date().toISOString().slice(0, 10);
+  return item.payment_status === "received" && (!item.received_on || item.received_on <= today);
+};
 
 function FinancialControlPage() {
   const { hasPermission } = useAuth();
@@ -164,7 +168,7 @@ function FinancialControlPage() {
         .filter(
           (row) =>
             (companyFilter === "all" || row.item.outsourced_company_id === companyFilter) &&
-            (statusFilter === "all" || row.item.payment_status === statusFilter),
+            (statusFilter === "all" || (statusFilter === "received" ? paymentIsReceived(row.item) : !paymentIsReceived(row.item))),
         ),
     [
       servicesQuery.data,
@@ -178,10 +182,10 @@ function FinancialControlPage() {
     ],
   );
   const totalOpen = rows
-    .filter((row) => row.item.payment_status === "pending")
+    .filter((row) => !paymentIsReceived(row.item))
     .reduce((total, row) => total + Number(row.item.net_invoice_amount ?? row.item.amount ?? 0), 0);
   const totalReceived = rows
-    .filter((row) => row.item.payment_status === "received")
+    .filter((row) => paymentIsReceived(row.item))
     .reduce((total, row) => total + Number(row.item.net_invoice_amount ?? row.item.amount ?? 0), 0);
   const commissionTotal = rows.reduce(
     (total, row) =>
@@ -235,7 +239,7 @@ function FinancialControlPage() {
         commission_due_date: form.commission_due_date || null,
         certificate_number: form.certificate_number.trim() || null,
         certificate_expires_on: form.certificate_expires_on || null,
-        payment_status: form.payment_status,
+      payment_status: form.payment_status === "received" && (!form.received_on || form.received_on <= new Date().toISOString().slice(0, 10)) ? "received" : "pending",
         received_on: form.received_on || null,
         financial_notes: form.financial_notes.trim() || null,
       };
@@ -397,14 +401,8 @@ function FinancialControlPage() {
                         {item.certificate_expires_on && <p className="text-muted-foreground">Validade: {formatDate(item.certificate_expires_on)}</p>}
                       </td>
                       <td className="p-3">
-                        <span
-                          className={
-                            item.payment_status === "received"
-                              ? "font-medium text-primary"
-                              : "text-amber-700"
-                          }
-                        >
-                          {item.payment_status === "received" ? "Recebido" : "Aguardando"}
+                        <span className={paymentIsReceived(item) ? "font-medium text-primary" : "text-amber-700"}>
+                          {paymentIsReceived(item) ? "Recebido" : "Aguardando"}
                         </span>
                         <p className="mt-1 text-muted-foreground">{formatDate(item.received_on)}</p>
                       </td>

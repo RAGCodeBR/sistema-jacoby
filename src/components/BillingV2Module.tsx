@@ -623,8 +623,12 @@ export function BillingV2Module() {
     if (error) toast.error(error.message); else refresh();
   };
   const updateCycleServicePaymentDate = async (id: string, paymentDate: string) => {
+    const today = new Date().toISOString().slice(0, 10);
     const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
-      .update({ received_on: paymentDate || null, payment_status: paymentDate ? "received" : "pending" })
+      .update({
+        received_on: paymentDate || null,
+        payment_status: paymentDate && paymentDate <= today ? "received" : "pending",
+      })
       .eq("id", id);
     if (error) toast.error(error.message); else refresh();
   };
