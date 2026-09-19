@@ -73,9 +73,8 @@ type Movement = {
   treatment_rate: number;
   exchange_rate: number;
   observation: string | null;
-  attachment_name: string | null;
-  attachment_path: string | null;
 };
+type MovementAttachment = { id: string; movement_id: string; file_name: string; storage_path: string; created_at: string };
 type Service = { id: string; name: string; active: boolean };
 type OutsourcedCompany = {
   id: string;
@@ -355,7 +354,7 @@ export function BillingV2Module() {
   const lockedBranchId = cycle?.branch_id || "";
   const placementsQuery = useQuery({
     queryKey: ["billing-v2-placements", cycleId],
-    enabled: Boolean(cycleId),
+    enabled: Boolean(cycleId && movementsQuery.data?.length),
     queryFn: async () => {
       const { data, error } = await (supabase.from("billing_v2_placements" as any) as any)
         .select("*")
@@ -375,6 +374,18 @@ export function BillingV2Module() {
         .order("occurred_on");
       if (error) throw error;
       return (data || []) as Movement[];
+    },
+  });
+  const movementAttachmentsQuery = useQuery({
+    queryKey: ["billing-v2-movement-attachments", cycleId, movementsQuery.data?.map((movement) => movement.id).join(",")],
+    enabled: Boolean(cycleId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_v2_movement_attachments" as any) as any)
+        .select("id,movement_id,file_name,storage_path,created_at")
+        .in("movement_id", movementsQuery.data?.map((movement) => movement.id) || [])
+        .order("created_at");
+      if (error) throw error;
+      return (data || []) as MovementAttachment[];
     },
   });
   const cycleServicesQuery = useQuery({
@@ -407,6 +418,7 @@ export function BillingV2Module() {
     residues = residuesQuery.data || [],
     placements = placementsQuery.data || [],
     movements = movementsQuery.data || [],
+    movementAttachments = movementAttachmentsQuery.data || [],
     services = servicesQuery.data || [],
     outsourcedCompanies = outsourcedCompaniesQuery.data || [],
     outsourcedCompanyServices = outsourcedCompanyServicesQuery.data || [],
@@ -740,15 +752,14 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const updateMovementAttachment = useMutation({
-    mutationFn: async ({ id, attachmentName, attachmentPath }: { id: string; attachmentName: string; attachmentPath: string }) => {
-      const { error } = await (supabase.from("billing_v2_movements" as any) as any)
-        .update({ attachment_name: attachmentName, attachment_path: attachmentPath })
-        .eq("id", id);
+  const addMovementAttachment = useMutation({
+    mutationFn: async ({ movementId, fileName, storagePath }: { movementId: string; fileName: string; storagePath: string }) => {
+      const { error } = await (supabase.from("billing_v2_movement_attachments" as any) as any)
+        .insert({ movement_id: movementId, file_name: fileName, storage_path: storagePath });
       if (error) throw error;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-movement-attachments", cycleId] });
       toast.success("PDF anexado à movimentação.");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -1483,8 +1494,9 @@ export function BillingV2Module() {
                 changingConfirmationId={toggleMovementConfirmation.isPending ? toggleMovementConfirmation.variables?.id : undefined}
                 onSave={(id, payload) => updateMovement.mutate({ id, payload })}
                 savingId={updateMovement.isPending ? updateMovement.variables?.id : undefined}
-                onAttachmentSave={(id, attachmentName, attachmentPath) => updateMovementAttachment.mutateAsync({ id, attachmentName, attachmentPath })}
-                uploadingId={updateMovementAttachment.isPending ? updateMovementAttachment.variables?.id : undefined}
+                attachments={movementAttachments}
+                onAttachmentAdd={(movementId, fileName, storagePath) => addMovementAttachment.mutateAsync({ movementId, fileName, storagePath })}
+                uploadingId={addMovementAttachment.isPending ? addMovementAttachment.variables?.movementId : undefined}
                 />
               </div>
             </TabsContent>
@@ -1666,7 +1678,8 @@ function MovementTable({
   changingConfirmationId,
   onSave,
   savingId,
-  onAttachmentSave,
+  attachments,
+  onAttachmentAdd,
   uploadingId,
 }: {
   rows: Movement[];
@@ -1678,7 +1691,8 @@ function MovementTable({
   changingConfirmationId?: string;
   onSave: (id: string, payload: Partial<Movement>) => void;
   savingId?: string;
-  onAttachmentSave: (id: string, attachmentName: string, attachmentPath: string) => Promise<unknown>;
+  attachments: MovementAttachment[];
+  onAttachmentAdd: (movementId: string, fileName: string, storagePath: string) => Promise<unknown>;
   uploadingId?: string;
 }) {
   const [editing, setEditing] = useState<Movement | null>(null);
@@ -1733,18 +1747,14 @@ function MovementTable({
     const { error } = await supabase.storage.from("movement-documents").upload(path, file, { contentType: "application/pdf", upsert: false });
     if (error) return toast.error(error.message);
     try {
-      await onAttachmentSave(row.id, file.name, path);
+      await onAttachmentAdd(row.id, file.name, path);
     } catch {
       await supabase.storage.from("movement-documents").remove([path]);
       return;
     }
-    if (row.attachment_path) {
-      void supabase.storage.from("movement-documents").remove([row.attachment_path]);
-    }
   };
-  const openPdf = async (row: Movement) => {
-    if (!row.attachment_path) return;
-    const { data, error } = await supabase.storage.from("movement-documents").createSignedUrl(row.attachment_path, 600);
+  const openPdf = async (attachment: MovementAttachment) => {
+    const { data, error } = await supabase.storage.from("movement-documents").createSignedUrl(attachment.storage_path, 600);
     if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
@@ -1802,12 +1812,12 @@ function MovementTable({
                   {row.observation || "—"}
                 </td>
                 <td className="p-2">
-                  <div className="flex items-center gap-1">
-                    {row.attachment_path && <Button variant="ghost" size="icon" aria-label="Abrir PDF anexado" title={row.attachment_name || "Abrir PDF"} onClick={() => void openPdf(row)}><FileText className="h-4 w-4 text-primary" /></Button>}
+                  <div className="flex min-w-40 flex-col items-start gap-1">
+                    {attachments.filter((attachment) => attachment.movement_id === row.id).map((attachment) => <Button key={attachment.id} variant="link" size="sm" className="h-auto max-w-40 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{attachment.file_name}</span></Button>)}
                     <label className="inline-flex">
                       <input className="sr-only" type="file" accept="application/pdf,.pdf" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
-                      <Button asChild variant="ghost" size="icon" disabled={uploadingId === row.id} aria-label="Anexar PDF à movimentação" title={row.attachment_path ? "Substituir PDF" : "Anexar PDF"}>
-                        <span><Upload className="h-4 w-4" /></span>
+                      <Button asChild variant="outline" size="sm" disabled={uploadingId === row.id} aria-label="Adicionar PDF à movimentação">
+                        <span><Upload className="mr-1 h-3.5 w-3.5" />Adicionar PDF</span>
                       </Button>
                     </label>
                   </div>
