@@ -354,7 +354,7 @@ export function BillingV2Module() {
   const lockedBranchId = cycle?.branch_id || "";
   const placementsQuery = useQuery({
     queryKey: ["billing-v2-placements", cycleId],
-    enabled: Boolean(cycleId && movementsQuery.data?.length),
+    enabled: Boolean(cycleId),
     queryFn: async () => {
       const { data, error } = await (supabase.from("billing_v2_placements" as any) as any)
         .select("*")
@@ -378,7 +378,7 @@ export function BillingV2Module() {
   });
   const movementAttachmentsQuery = useQuery({
     queryKey: ["billing-v2-movement-attachments", cycleId, movementsQuery.data?.map((movement) => movement.id).join(",")],
-    enabled: Boolean(cycleId),
+    enabled: Boolean(cycleId && movementsQuery.data?.length),
     queryFn: async () => {
       const { data, error } = await (supabase.from("billing_v2_movement_attachments" as any) as any)
         .select("id,movement_id,file_name,storage_path,created_at")
