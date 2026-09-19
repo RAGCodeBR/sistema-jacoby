@@ -1,7 +1,7 @@
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Download, FilePlus2, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, FilePlus2, FileText, Pencil, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,6 +72,8 @@ type Movement = {
   treatment_rate: number;
   exchange_rate: number;
   observation: string | null;
+  attachment_name: string | null;
+  attachment_path: string | null;
 };
 type Service = { id: string; name: string; active: boolean };
 type OutsourcedCompany = {
@@ -731,6 +733,19 @@ export function BillingV2Module() {
     onSuccess: () => {
       refresh();
       toast.success("Movimentação atualizada. Os valores do BM foram recalculados.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const updateMovementAttachment = useMutation({
+    mutationFn: async ({ id, attachmentName, attachmentPath }: { id: string; attachmentName: string; attachmentPath: string }) => {
+      const { error } = await (supabase.from("billing_v2_movements" as any) as any)
+        .update({ attachment_name: attachmentName, attachment_path: attachmentPath })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-movements", cycleId] });
+      toast.success("PDF anexado à movimentação.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1455,6 +1470,8 @@ export function BillingV2Module() {
                 changingConfirmationId={toggleMovementConfirmation.isPending ? toggleMovementConfirmation.variables?.id : undefined}
                 onSave={(id, payload) => updateMovement.mutate({ id, payload })}
                 savingId={updateMovement.isPending ? updateMovement.variables?.id : undefined}
+                onAttachmentSave={(id, attachmentName, attachmentPath) => updateMovementAttachment.mutateAsync({ id, attachmentName, attachmentPath })}
+                uploadingId={updateMovementAttachment.isPending ? updateMovementAttachment.variables?.id : undefined}
                 />
               </div>
             </TabsContent>
@@ -1636,6 +1653,8 @@ function MovementTable({
   changingConfirmationId,
   onSave,
   savingId,
+  onAttachmentSave,
+  uploadingId,
 }: {
   rows: Movement[];
   branches: Branch[];
@@ -1646,6 +1665,8 @@ function MovementTable({
   changingConfirmationId?: string;
   onSave: (id: string, payload: Partial<Movement>) => void;
   savingId?: string;
+  onAttachmentSave: (id: string, attachmentName: string, attachmentPath: string) => Promise<unknown>;
+  uploadingId?: string;
 }) {
   const [editing, setEditing] = useState<Movement | null>(null);
   const [draft, setDraft] = useState({
@@ -1682,6 +1703,36 @@ function MovementTable({
   };
   const branchEquipment = editing ? equipment.filter((item) => item.branch_id === editing.branch_id) : [];
   const branchResidues = editing ? residues.filter((item) => !item.branch_id || item.branch_id === editing.branch_id) : [];
+  const uploadPdf = async (row: Movement, file?: File) => {
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Anexe somente arquivos PDF.");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("O PDF deve ter no máximo 15 MB.");
+      return;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${row.id}/${Date.now()}-${safeName}`;
+    const { error } = await supabase.storage.from("movement-documents").upload(path, file, { contentType: "application/pdf", upsert: false });
+    if (error) return toast.error(error.message);
+    try {
+      await onAttachmentSave(row.id, file.name, path);
+    } catch {
+      await supabase.storage.from("movement-documents").remove([path]);
+      return;
+    }
+    if (row.attachment_path) {
+      void supabase.storage.from("movement-documents").remove([row.attachment_path]);
+    }
+  };
+  const openPdf = async (row: Movement) => {
+    if (!row.attachment_path) return;
+    const { data, error } = await supabase.storage.from("movement-documents").createSignedUrl(row.attachment_path, 600);
+    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
   return (
     <>
     <Card className="overflow-x-auto p-4">
@@ -1698,6 +1749,7 @@ function MovementTable({
             <th className="p-2">Removidas</th>
             <th className="p-2">Peso</th>
             <th className="p-2">Observação</th>
+            <th className="p-2">PDF</th>
             <th className="p-2">Confirmada</th>
             <th className="p-2" />
           </tr>
@@ -1733,6 +1785,17 @@ function MovementTable({
                   {row.observation || "—"}
                 </td>
                 <td className="p-2">
+                  <div className="flex items-center gap-1">
+                    {row.attachment_path && <Button variant="ghost" size="icon" aria-label="Abrir PDF anexado" title={row.attachment_name || "Abrir PDF"} onClick={() => void openPdf(row)}><FileText className="h-4 w-4 text-primary" /></Button>}
+                    <label className="inline-flex">
+                      <input className="sr-only" type="file" accept="application/pdf,.pdf" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                      <Button asChild variant="ghost" size="icon" disabled={uploadingId === row.id} aria-label="Anexar PDF à movimentação" title={row.attachment_path ? "Substituir PDF" : "Anexar PDF"}>
+                        <span><Upload className="h-4 w-4" /></span>
+                      </Button>
+                    </label>
+                  </div>
+                </td>
+                <td className="p-2">
                   <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm font-medium">
                     <Checkbox
                       checked={row.confirmed}
@@ -1756,7 +1819,7 @@ function MovementTable({
             ))
           ) : (
             <tr>
-              <td className="p-5 text-center text-muted-foreground" colSpan={12}>
+              <td className="p-5 text-center text-muted-foreground" colSpan={13}>
                 Nenhuma movimentação neste boletim.
               </td>
             </tr>
