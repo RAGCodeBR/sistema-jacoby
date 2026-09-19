@@ -97,6 +97,10 @@ type ClientServiceRate = { client_id: string; waste_service_id: string; default_
 type CycleService = {
   id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number;
   execution_date: string | null;
+  invoice_issued_on: string | null;
+  received_on: string | null;
+  invoice_pdf_name: string | null;
+  invoice_pdf_path: string | null;
 };
 type CompanyProfile = {
   legal_name: string;
@@ -611,6 +615,54 @@ export function BillingV2Module() {
       .update({ execution_date: executionDate || null })
       .eq("id", id);
     if (error) toast.error(error.message); else refresh();
+  };
+  const updateCycleServiceBillingDate = async (id: string, invoiceDate: string) => {
+    const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
+      .update({ invoice_issued_on: invoiceDate || null })
+      .eq("id", id);
+    if (error) toast.error(error.message); else refresh();
+  };
+  const updateCycleServicePaymentDate = async (id: string, paymentDate: string) => {
+    const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
+      .update({ received_on: paymentDate || null, payment_status: paymentDate ? "received" : "pending" })
+      .eq("id", id);
+    if (error) toast.error(error.message); else refresh();
+  };
+  const uploadCycleServiceInvoicePdf = async (service: CycleService, file?: File) => {
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Anexe somente arquivos em PDF.");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("O PDF deve ter no máximo 15 MB.");
+      return;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const storagePath = `service-invoices/${service.id}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage
+      .from("movement-documents")
+      .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
+    if (uploadError) return toast.error(uploadError.message);
+    const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
+      .update({ invoice_pdf_name: file.name, invoice_pdf_path: storagePath })
+      .eq("id", service.id);
+    if (error) {
+      await supabase.storage.from("movement-documents").remove([storagePath]);
+      return toast.error(error.message);
+    }
+    if (service.invoice_pdf_path && service.invoice_pdf_path !== storagePath) {
+      await supabase.storage.from("movement-documents").remove([service.invoice_pdf_path]);
+    }
+    refresh();
+    toast.success("PDF de faturamento anexado ao BM e ao Financeiro.");
+  };
+  const openCycleServiceInvoicePdf = async (service: CycleService) => {
+    if (!service.invoice_pdf_path) return;
+    const { data, error } = await supabase.storage.from("movement-documents")
+      .createSignedUrl(service.invoice_pdf_path, 600);
+    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
   const addPlacement = useMutation({
     mutationFn: async () => {
@@ -1621,7 +1673,7 @@ export function BillingV2Module() {
                   </Field>
                   <Button className="self-end" onClick={() => addCycleService.mutate()} disabled={!selectedServiceId}>Incluir serviço</Button>
                 </div>
-                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Valor</th><th className="p-2">Data de execução</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || "—"}</td><td className="p-2"><Input className="h-8 w-32" type="number" min="0" step="0.01" defaultValue={Number(item.amount || 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
+                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1240px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Valor</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">PDF de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-32" type="number" min="0" step="0.01" defaultValue={Number(item.amount || 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir PDF"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "PDF anexado"}</span></Button>}<label className="inline-flex"><input className="sr-only" type="file" accept="application/pdf,.pdf" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar PDF" : "Anexar PDF"}</span></Button></label></div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
               </Card>
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>

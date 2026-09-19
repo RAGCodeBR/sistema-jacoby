@@ -1,6 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, HandCoins, Pencil } from "lucide-react";
+import { CheckCircle2, FileText, HandCoins, Pencil } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
@@ -42,6 +42,8 @@ type FinancialService = {
   service_order: string | null;
   closing_date: string | null;
   invoice_issued_on: string | null;
+  invoice_pdf_name: string | null;
+  invoice_pdf_path: string | null;
   invoice_number: string | null;
   invoice_due_date: string | null;
   net_invoice_amount: number | null;
@@ -249,6 +251,13 @@ function FinancialControlPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const openInvoicePdf = async (item: FinancialService) => {
+    if (!item.invoice_pdf_path) return;
+    const { data, error } = await supabase.storage.from("movement-documents")
+      .createSignedUrl(item.invoice_pdf_path, 600);
+    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
   if (!hasPermission("billing")) return <Navigate to="/dashboard" />;
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6">
@@ -327,6 +336,7 @@ function FinancialControlPage() {
                   <th className="p-3">NF</th>
                   <th className="p-3">NF líquida</th>
                   <th className="p-3">Venc. NF</th>
+                  <th className="p-3">PDF da cobrança</th>
                   <th className="p-3">Comissão</th>
                   <th className="p-3">Venc. comissão</th>
                   <th className="p-3">Certificado</th>
@@ -372,6 +382,9 @@ function FinancialControlPage() {
                       </td>
                       <td className="p-3">{money.format(base)}</td>
                       <td className="p-3">{formatDate(item.invoice_due_date)}</td>
+                      <td className="p-3">
+                        {item.invoice_pdf_path && <Button variant="link" size="sm" className="h-auto max-w-48 p-0" title={item.invoice_pdf_name || "Abrir PDF"} onClick={() => void openInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "PDF anexado"}</span></Button>}
+                      </td>
                       <td className="p-3">
                         {money.format(commission)}{" "}
                         <span className="text-muted-foreground">
