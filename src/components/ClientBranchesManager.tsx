@@ -29,7 +29,7 @@ export function ClientBranchesManager({ clientId }: { clientId: string }) {
   const { data: branches = [], isLoading } = useQuery({
     queryKey: ["client-branches", clientId],
     queryFn: async () => {
-      const { data, error } = await (supabase.from("client_branches") as any).select("*").eq("client_id", clientId).order("name");
+      const { data, error } = await (supabase.from("client_branches") as any).select("*").eq("client_id", clientId).eq("is_active", true).order("name");
       if (error) throw error;
       return (data ?? []) as Branch[];
     },
@@ -55,15 +55,15 @@ export function ClientBranchesManager({ clientId }: { clientId: string }) {
     reset();
   };
   const remove = async (branch: Branch) => {
-    if (!confirm(`Excluir a unidade “${branch.name}”?`)) return;
-    const { error } = await (supabase.from("client_branches") as any).delete().eq("id", branch.id);
+    if (!confirm(`Remover a unidade “${branch.name}” das opções ativas? Os boletins antigos serão preservados.`)) return;
+    const { error } = await (supabase.from("client_branches") as any).update({ is_active: false }).eq("id", branch.id);
     if (error) return toast.error(error.message);
     await qc.invalidateQueries({ queryKey: ["client-branches", clientId] });
-    toast.success("Unidade excluída.");
+    toast.success("Unidade removida das opções ativas. O histórico dos boletins foi preservado.");
   };
   return <div className="space-y-6">
     <div><h2 className="text-lg font-semibold">Filiais e pátios</h2><p className="text-sm text-muted-foreground">Cadastre cada unidade pelo seu CNPJ. O mesmo login do cliente poderá visualizar todas elas no portal.</p></div>
     <Card className="p-5"><div className="mb-4 flex items-center gap-2 font-medium"><Building2 className="h-4 w-4 text-primary" />{editingId ? "Editar unidade" : "Nova unidade"}</div><div className="grid gap-4 md:grid-cols-2"><Field label="Nome da filial ou pátio *"><Input value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="Ex.: Pátio Campinas" /></Field><Field label="CNPJ"><Input value={form.cnpj} onChange={(e) => update("cnpj", e.target.value)} placeholder="00.000.000/0001-00" /></Field><Field label="Razão social"><Input value={form.legal_name} onChange={(e) => update("legal_name", e.target.value)} /></Field><Field label="Responsável"><Input value={form.responsible} onChange={(e) => update("responsible", e.target.value)} /></Field><Field label="Telefone"><Input value={form.phone} onChange={(e) => update("phone", e.target.value)} /></Field><Field label="E-mail"><Input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} /></Field><div className="md:col-span-2"><Field label="Endereço"><Input value={form.address} onChange={(e) => update("address", e.target.value)} /></Field></div></div><div className="mt-4 flex items-center gap-2"><Switch checked={form.is_active} onCheckedChange={(checked) => update("is_active", checked)} id="branch-active" /><Label htmlFor="branch-active">Unidade ativa no portal</Label></div><div className="mt-5 flex justify-end gap-2">{editingId && <Button variant="outline" onClick={reset}>Cancelar</Button>}<Button onClick={() => void save()} disabled={saving}><Plus className="mr-2 h-4 w-4" />{saving ? "Salvando..." : editingId ? "Salvar unidade" : "Cadastrar unidade"}</Button></div></Card>
-    <Card className="overflow-hidden"><div className="border-b px-5 py-3 font-medium">Unidades cadastradas</div>{isLoading ? <p className="p-5 text-sm text-muted-foreground">Carregando...</p> : !branches.length ? <p className="p-8 text-center text-sm text-muted-foreground">Nenhuma filial ou pátio cadastrado.</p> : <div className="divide-y">{branches.map((branch) => <div key={branch.id} className="flex flex-wrap items-center gap-3 p-4"><Building2 className="h-5 w-5 text-primary" /><div className="min-w-0 flex-1"><p className="font-medium">{branch.name} {!branch.is_active && <span className="ml-1 text-xs font-normal text-muted-foreground">(inativa)</span>}</p><p className="text-sm text-muted-foreground">{[branch.cnpj && `CNPJ ${branch.cnpj}`, branch.address, branch.responsible].filter(Boolean).join(" · ") || "Sem dados complementares"}</p></div><Button size="icon" variant="ghost" title="Editar unidade" onClick={() => edit(branch)}><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" title="Excluir unidade" onClick={() => void remove(branch)}><Trash2 className="h-4 w-4" /></Button></div>)}</div>}</Card>
+    <Card className="overflow-hidden"><div className="border-b px-5 py-3 font-medium">Unidades ativas</div>{isLoading ? <p className="p-5 text-sm text-muted-foreground">Carregando...</p> : !branches.length ? <p className="p-8 text-center text-sm text-muted-foreground">Nenhuma filial ou pátio cadastrado.</p> : <div className="divide-y">{branches.map((branch) => <div key={branch.id} className="flex flex-wrap items-center gap-3 p-4"><Building2 className="h-5 w-5 text-primary" /><div className="min-w-0 flex-1"><p className="font-medium">{branch.name}</p><p className="text-sm text-muted-foreground">{[branch.cnpj && `CNPJ ${branch.cnpj}`, branch.address, branch.responsible].filter(Boolean).join(" · ") || "Sem dados complementares"}</p></div><Button size="icon" variant="ghost" title="Editar unidade" onClick={() => edit(branch)}><Pencil className="h-4 w-4" /></Button><Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" title="Remover unidade" onClick={() => void remove(branch)}><Trash2 className="h-4 w-4" /></Button></div>)}</div>}</Card>
   </div>;
 }
