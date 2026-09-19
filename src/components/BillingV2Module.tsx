@@ -75,7 +75,7 @@ type Movement = {
   observation: string | null;
 };
 type MovementAttachment = { id: string; movement_id: string; file_name: string; storage_path: string; created_at: string };
-type Service = { id: string; name: string; active: boolean };
+type Service = { id: string; name: string; active: boolean; default_rate?: number };
 type OutsourcedCompany = {
   id: string;
   legal_name: string;
@@ -91,8 +91,9 @@ type OutsourcedCompany = {
 type OutsourcedCompanyService = {
   outsourced_company_id: string;
   waste_service_id: string;
-  waste_services?: { name: string | null } | null;
+  waste_services?: { id: string; name: string | null; active: boolean } | null;
 };
+type ClientServiceRate = { client_id: string; waste_service_id: string; default_rate: number };
 type CycleService = {
   id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number;
   execution_date: string | null;
@@ -325,7 +326,7 @@ export function BillingV2Module() {
     q.select("id,name,active,branch_id,default_treatment_rate").eq("client_id", clientId).order("name"),
   );
   const servicesQuery = query<Service>(["billing-v2-services", clientId], "waste_services", (q) =>
-    q.select("id,name,active").eq("client_id", clientId).eq("active", true).order("name"),
+    q.select("id,name,active,default_rate").eq("client_id", clientId).eq("active", true).order("name"),
   );
   const outsourcedCompaniesQuery = useQuery({
     queryKey: ["outsourced-companies"],
@@ -342,9 +343,20 @@ export function BillingV2Module() {
     queryKey: ["outsourced-company-services"],
     queryFn: async () => {
       const { data, error } = await (supabase.from("outsourced_company_services" as any) as any)
-        .select("outsourced_company_id,waste_service_id,waste_services(name)");
+        .select("outsourced_company_id,waste_service_id,waste_services(id,name,active)");
       if (error) throw error;
       return (data || []) as OutsourcedCompanyService[];
+    },
+  });
+  const clientServiceRatesQuery = useQuery({
+    queryKey: ["billing-v2-client-service-rates", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_client_service_rates" as any) as any)
+        .select("client_id,waste_service_id,default_rate")
+        .eq("client_id", clientId);
+      if (error) throw error;
+      return (data || []) as ClientServiceRate[];
     },
   });
   const companyProfileQuery = useQuery({
@@ -429,14 +441,29 @@ export function BillingV2Module() {
     placements = placementsQuery.data || [],
     movements = movementsQuery.data || [],
     movementAttachments = movementAttachmentsQuery.data || [],
-    services = servicesQuery.data || [],
+    clientServices = servicesQuery.data || [],
     outsourcedCompanies = outsourcedCompaniesQuery.data || [],
     outsourcedCompanyServices = outsourcedCompanyServicesQuery.data || [],
+    clientServiceRates = clientServiceRatesQuery.data || [],
     cycleServices = cycleServicesQuery.data || [],
     previousClosedCycle = previousClosedCycleQuery.data || null,
     previousClosedPlacements = previousClosedPlacementsQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
   const activeResidues = residues.filter((item) => item.active);
+  const services = useMemo(() => {
+    const outsourcedCatalog = outsourcedCompanyServices
+      .map((link) => link.waste_services)
+      .filter((service): service is NonNullable<typeof service> => Boolean(service?.active))
+      .map((service) => ({ id: service.id, name: service.name || "Serviço", active: service.active, default_rate: 0 }));
+    const clientOnly = clientServices.filter((service) =>
+      !outsourcedCompanyServices.some((link) => link.waste_service_id === service.id),
+    );
+    return [...outsourcedCatalog, ...clientOnly]
+      .filter((service, index, all) => all.findIndex((item) => item.id === service.id) === index)
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [clientServices, outsourcedCompanyServices]);
+  const serviceAmountForClient = (serviceId: string) =>
+    Number(clientServiceRates.find((rate) => rate.waste_service_id === serviceId)?.default_rate || services.find((service) => service.id === serviceId)?.default_rate || 0);
   const residuesForBranch = (branchId: string) =>
     activeResidues.filter((item) => !item.branch_id || item.branch_id === branchId);
   const activePlacementsAtBranch = useMemo(
@@ -1576,7 +1603,10 @@ export function BillingV2Module() {
                 </div>
                 <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[1fr_170px_170px_auto]">
                   <Field label="Incluir serviço no boletim">
-                    <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
+                    <Select value={selectedServiceId} onValueChange={(serviceId) => {
+                      setSelectedServiceId(serviceId);
+                      setServiceAmount(String(serviceAmountForClient(serviceId)));
+                    }}>
                       <SelectTrigger><SelectValue placeholder={cycle?.issuer_type === "outsourced" && !issuerCompany ? "Selecione a empresa emissora primeiro" : "Selecionar serviço"} /></SelectTrigger>
                       <SelectContent>
                         {availableServices.map((service) => <SelectItem key={service.id} value={service.id}>{service.name}</SelectItem>)}
