@@ -88,7 +88,11 @@ type OutsourcedCompany = {
   email: string | null;
   environmental_license: string | null;
 };
-type OutsourcedCompanyService = { outsourced_company_id: string; waste_service_id: string };
+type OutsourcedCompanyService = {
+  outsourced_company_id: string;
+  waste_service_id: string;
+  waste_services?: { name: string | null } | null;
+};
 type CycleService = {
   id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number;
   execution_date: string | null;
@@ -110,6 +114,8 @@ const money = (value: number) =>
 const number = (value: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0);
 const bulletinNumber = (value?: number | null) => `#${String(value || 0).padStart(3, "0")}`;
+const serviceNameKey = (name?: string | null) =>
+  (name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
 const billingViewStorageKey = "jacoby:billing-v2:view";
 type BillingViewState = {
   clientId?: string;
@@ -336,7 +342,7 @@ export function BillingV2Module() {
     queryKey: ["outsourced-company-services"],
     queryFn: async () => {
       const { data, error } = await (supabase.from("outsourced_company_services" as any) as any)
-        .select("outsourced_company_id,waste_service_id");
+        .select("outsourced_company_id,waste_service_id,waste_services(name)");
       if (error) throw error;
       return (data || []) as OutsourcedCompanyService[];
     },
@@ -877,7 +883,12 @@ export function BillingV2Module() {
   const hasThirdPartyContext = Boolean(documentThirdParty) || filteredServices.length > 0;
   const availableServices = services.filter((service) => {
     if (cycle?.issuer_type !== "outsourced" || !cycle.outsourced_company_id) return true;
-    return outsourcedCompanyServices.some((link) => link.waste_service_id === service.id && link.outsourced_company_id === cycle.outsourced_company_id);
+    return outsourcedCompanyServices.some((link) =>
+      link.outsourced_company_id === cycle.outsourced_company_id && (
+        link.waste_service_id === service.id ||
+        serviceNameKey(link.waste_services?.name) === serviceNameKey(service.name)
+      )
+    );
   }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
   const generatePdf = async () => {
     const confirmedMovements = filteredMovements.filter((item) => item.confirmed);
