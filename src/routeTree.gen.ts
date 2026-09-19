@@ -16,6 +16,7 @@ import { Route as AppArquivosRouteImport } from './routes/_app/arquivos'
 import { Route as AppCalendarioRouteImport } from './routes/_app/calendario'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AppFinanceiroRouteImport } from './routes/_app/financeiro'
 import { Route as AppImportAtaRouteImport } from './routes/_app/import-ata'
 import { Route as AppNotesRouteImport } from './routes/_app/notes'
 import { Route as AppReportsRouteImport } from './routes/_app/reports'
@@ -77,6 +78,11 @@ const AppClientsRoute = AppClientsRouteImport.update({
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFinanceiroRoute = AppFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
   getParentRoute: () => AppRoute,
 } as any)
 const AppImportAtaRoute = AppImportAtaRouteImport.update({
@@ -229,6 +235,7 @@ export interface FileRoutesByFullPath {
   '/calendario': typeof AppCalendarioRoute
   '/clients': typeof AppClientsRouteWithChildren
   '/dashboard': typeof AppDashboardRoute
+  '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
   '/notes': typeof AppNotesRoute
   '/reports': typeof AppReportsRoute
@@ -264,6 +271,7 @@ export interface FileRoutesByTo {
   '/arquivos': typeof AppArquivosRoute
   '/calendario': typeof AppCalendarioRoute
   '/dashboard': typeof AppDashboardRoute
+  '/financeiro': typeof AppFinanceiroRoute
   '/import-ata': typeof AppImportAtaRoute
   '/notes': typeof AppNotesRoute
   '/reports': typeof AppReportsRoute
@@ -301,6 +309,7 @@ export interface FileRoutesById {
   '/_app/calendario': typeof AppCalendarioRoute
   '/_app/clients': typeof AppClientsRouteWithChildren
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/financeiro': typeof AppFinanceiroRoute
   '/_app/import-ata': typeof AppImportAtaRoute
   '/_app/notes': typeof AppNotesRoute
   '/_app/reports': typeof AppReportsRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/calendario'
     | '/clients'
     | '/dashboard'
+    | '/financeiro'
     | '/import-ata'
     | '/notes'
     | '/reports'
@@ -374,6 +384,7 @@ export interface FileRouteTypes {
     | '/arquivos'
     | '/calendario'
     | '/dashboard'
+    | '/financeiro'
     | '/import-ata'
     | '/notes'
     | '/reports'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/_app/calendario'
     | '/_app/clients'
     | '/_app/dashboard'
+    | '/_app/financeiro'
     | '/_app/import-ata'
     | '/_app/notes'
     | '/_app/reports'
@@ -496,6 +508,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/financeiro': {
+      id: '/_app/financeiro'
+      path: '/financeiro'
+      fullPath: '/financeiro'
+      preLoaderRoute: typeof AppFinanceiroRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/import-ata': {
@@ -736,6 +755,7 @@ interface AppRouteChildren {
   AppCalendarioRoute: typeof AppCalendarioRoute
   AppClientsRoute: typeof AppClientsRouteWithChildren
   AppDashboardRoute: typeof AppDashboardRoute
+  AppFinanceiroRoute: typeof AppFinanceiroRoute
   AppImportAtaRoute: typeof AppImportAtaRoute
   AppNotesRoute: typeof AppNotesRoute
   AppReportsRoute: typeof AppReportsRoute
@@ -760,6 +780,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCalendarioRoute: AppCalendarioRoute,
   AppClientsRoute: AppClientsRouteWithChildren,
   AppDashboardRoute: AppDashboardRoute,
+  AppFinanceiroRoute: AppFinanceiroRoute,
   AppImportAtaRoute: AppImportAtaRoute,
   AppNotesRoute: AppNotesRoute,
   AppReportsRoute: AppReportsRoute,

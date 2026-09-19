@@ -89,7 +89,10 @@ type OutsourcedCompany = {
   environmental_license: string | null;
 };
 type OutsourcedCompanyService = { outsourced_company_id: string; waste_service_id: string };
-type CycleService = { id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number };
+type CycleService = {
+  id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number;
+  execution_date: string | null;
+};
 type CompanyProfile = {
   legal_name: string;
   trade_name: string | null;
@@ -200,6 +203,7 @@ export function BillingV2Module() {
   const savingMovementRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
+  const [serviceExecutionDate, setServiceExecutionDate] = useState(new Date().toISOString().slice(0, 10));
 
   // Em uma recarga causada pelo próprio navegador, a primeira renderização pode
   // ocorrer no servidor. Restauramos a aba somente depois da hidratação e antes
@@ -556,6 +560,7 @@ export function BillingV2Module() {
         waste_service_id: selectedServiceId,
         outsourced_company_id: issuerCompanyId,
         amount: Number(serviceAmount || 0),
+        execution_date: serviceExecutionDate || null,
       });
       if (error) throw error;
     },
@@ -565,6 +570,12 @@ export function BillingV2Module() {
   const updateCycleServiceAmount = async (id: string, amount: string) => {
     const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
       .update({ amount: Number(amount || 0) })
+      .eq("id", id);
+    if (error) toast.error(error.message); else refresh();
+  };
+  const updateCycleServiceExecutionDate = async (id: string, executionDate: string) => {
+    const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
+      .update({ execution_date: executionDate || null })
       .eq("id", id);
     if (error) toast.error(error.message); else refresh();
   };
@@ -1552,7 +1563,7 @@ export function BillingV2Module() {
                     <p className="mt-1 font-semibold">Emitido por {cycle?.issuer_type === "outsourced" ? issuerCompany?.trade_name || issuerCompany?.legal_name || "empresa terceirizada" : "Jacoby Soluções Ambientais"}</p>
                   </div>
                 </div>
-                <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[1fr_180px_auto]">
+                <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[1fr_170px_170px_auto]">
                   <Field label="Incluir serviço no boletim">
                     <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
                       <SelectTrigger><SelectValue placeholder={cycle?.issuer_type === "outsourced" && !issuerCompany ? "Selecione a empresa emissora primeiro" : "Selecionar serviço"} /></SelectTrigger>
@@ -1564,9 +1575,12 @@ export function BillingV2Module() {
                   <Field label="Valor aplicado">
                     <Input type="number" min="0" step="0.01" value={serviceAmount} onChange={(event) => setServiceAmount(event.target.value)} />
                   </Field>
+                  <Field label="Data de execução">
+                    <Input type="date" value={serviceExecutionDate} onChange={(event) => setServiceExecutionDate(event.target.value)} />
+                  </Field>
                   <Button className="self-end" onClick={() => addCycleService.mutate()} disabled={!selectedServiceId}>Incluir serviço</Button>
                 </div>
-                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[540px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Valor</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || "—"}</td><td className="p-2"><Input className="h-8 w-32" type="number" min="0" step="0.01" defaultValue={Number(item.amount || 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value)} /></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
+                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Valor</th><th className="p-2">Data de execução</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || "—"}</td><td className="p-2"><Input className="h-8 w-32" type="number" min="0" step="0.01" defaultValue={Number(item.amount || 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
               </Card>
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>

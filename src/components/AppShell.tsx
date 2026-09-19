@@ -29,6 +29,7 @@ import {
   FolderOpen,
   AlertTriangle,
   ClipboardCheck,
+  HandCoins,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
@@ -72,6 +73,7 @@ const allNav: readonly NavItem[] = [
   { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/portal/residuos", label: "Faturamento", icon: Recycle, permission: "billing", tab: "faturamento2" },
+  { to: "/financeiro", label: "Financeiro", icon: HandCoins, permission: "billing" },
   { to: "/portal/residuos", label: "Configurações de movimentação", icon: Settings, permission: "movement_settings", tab: "configuracoes" },
   { to: "/users", label: "Usuários", icon: Users, adminOnly: true },
   { to: "/trash", label: "Lixeira", icon: Trash2, permission: "trash" },
