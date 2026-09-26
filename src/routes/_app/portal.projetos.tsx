@@ -19,6 +19,17 @@ const fallbackColumns = [
 ];
 const statusFor = (task: ProjectTask) => task.status === "done" ? "done" : task.status || "todo";
 const priorityLabel: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta", urgent: "Urgente" };
+// Tarefas antigas podem ter sido salvas como dd/mm/aaaa. O portal aceita os
+// dois formatos para não exibir "Invalid Date" ao cliente.
+function parseDeadline(value: string | null) {
+  if (!value) return null;
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) { const date = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T12:00:00`); return Number.isNaN(date.getTime()) ? null : date; }
+  const brazilian = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brazilian) { const date = new Date(`${brazilian[3]}-${brazilian[2]}-${brazilian[1]}T12:00:00`); return Number.isNaN(date.getTime()) ? null : date; }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 function ClientProjectsPage() {
   const { clientId } = useAuth();
@@ -48,7 +59,8 @@ function ClientProjectsPage() {
 }
 
 function ProjectCard({ task }: { task: ProjectTask }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const overdue = !!task.due_date && task.due_date < today && statusFor(task) !== "done";
-  return <Card className="p-4 shadow-sm"><div className="flex gap-2"><ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><h3 className="font-medium leading-snug">{task.title}</h3>{task.description && <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>}</div></div><div className="mt-4 flex flex-wrap gap-2 text-xs">{task.priority && <span className="rounded-full bg-muted px-2 py-1">Prioridade {priorityLabel[task.priority]}</span>}{task.due_date && <span className={`flex items-center gap-1 rounded-full px-2 py-1 ${overdue ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>{overdue ? <CircleAlert className="h-3.5 w-3.5" /> : statusFor(task) === "done" ? <CircleCheck className="h-3.5 w-3.5 text-primary" /> : <CalendarDays className="h-3.5 w-3.5" />}{overdue ? "Prazo vencido" : `Prazo ${new Date(`${task.due_date}T12:00:00`).toLocaleDateString("pt-BR")}`}</span>}</div></Card>;
+  const deadline = parseDeadline(task.due_date);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const overdue = !!deadline && deadline < today && statusFor(task) !== "done";
+  return <Card className="p-4 shadow-sm"><div className="flex gap-2"><ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div className="min-w-0 flex-1"><h3 className="font-medium leading-snug">{task.title}</h3>{task.description && <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>}</div></div><div className="mt-4 flex flex-wrap gap-2 text-xs">{task.priority && <span className="rounded-full bg-muted px-2 py-1">Prioridade {priorityLabel[task.priority]}</span>}{deadline && <span className={`flex items-center gap-1 rounded-full px-2 py-1 ${overdue ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>{overdue ? <CircleAlert className="h-3.5 w-3.5" /> : statusFor(task) === "done" ? <CircleCheck className="h-3.5 w-3.5 text-primary" /> : <CalendarDays className="h-3.5 w-3.5" />}{overdue ? "Prazo vencido" : `Prazo ${deadline.toLocaleDateString("pt-BR")}`}</span>}</div></Card>;
 }
