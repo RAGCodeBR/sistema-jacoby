@@ -120,7 +120,7 @@ function SortableTaskCard({
     transform: CSS.Translate.toString(transform),
     transition: transition ?? "transform 180ms cubic-bezier(0.2, 0, 0, 1)",
     opacity: isDragging ? 0.4 : 1,
-    willChange: "transform",
+    willChange: isDragging ? "transform" : undefined,
   } as CSSProperties;
 
   return (
@@ -556,8 +556,8 @@ function KanbanPage() {
   ]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 110, tolerance: 10 } }),
   );
 
   const filtered = useMemo(() => {
@@ -1378,7 +1378,7 @@ function KanbanPage() {
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetectionStrategy}
-          autoScroll={{ layoutShiftCompensation: false, threshold: { x: 0.15, y: 0.15 } }}
+          autoScroll={{ layoutShiftCompensation: false, threshold: { x: 0.22, y: 0.22 } }}
           onDragStart={(e) => {
             if (e.active.data.current?.type === "task") {
               setActiveTask(tasks.find((t) => t.id === e.active.id) ?? null);
@@ -1485,19 +1485,12 @@ function KanbanPage() {
               </CompletedColumn>
             </div>
           </SortableContext>
-          <DragOverlay>
+          <DragOverlay dropAnimation={{ duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" }}>
             {activeTask && (
-              <div className="rotate-2 opacity-90">
-                <TaskCard
-                  task={activeTask}
-                  clients={clients}
-                  profiles={profiles}
-                  columns={columns}
-                  tags={tags}
-                  statuses={statuses}
-                  collaborators={collaborators}
-                  minimal={minimalCards}
-                />
+              <div className="w-72 rotate-1 rounded-xl border bg-background p-4 shadow-xl opacity-95">
+                <p className="text-xs font-medium text-primary">Movendo tarefa</p>
+                <p className="mt-1 font-semibold leading-snug">{activeTask.title}</p>
+                {activeTask.due_date && <p className="mt-2 text-xs text-muted-foreground">Prazo: {activeTask.due_date}</p>}
               </div>
             )}
           </DragOverlay>
