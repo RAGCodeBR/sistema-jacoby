@@ -34,7 +34,8 @@ import {
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import jacobyLogo from "@/assets/jacoby-logo.webp";
 import jacobyLogoFull from "@/assets/jacoby-logo-transparent.png";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -83,6 +84,20 @@ const allNav: readonly NavItem[] = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { profile, user, signOut, isAdmin, isClient, hasPermission } = useAuth();
+  const queryClient = useQueryClient();
+  const previousSessionUserId = useRef<string | null | undefined>(undefined);
+
+  // Nenhum dado de um portal pode permanecer no cache ao trocar de conta na
+  // mesma aba do navegador. A fonte de dados continua protegida por RLS; esta
+  // limpeza evita a exibição transitória de resultados da sessão anterior.
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+    if (previousSessionUserId.current !== undefined && previousSessionUserId.current !== currentUserId) {
+      queryClient.clear();
+    }
+    previousSessionUserId.current = currentUserId;
+  }, [queryClient, user?.id]);
+
   const nav = useMemo(() => {
     return allNav.filter(
       (item) =>
