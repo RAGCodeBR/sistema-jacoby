@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 
 export const Route = createFileRoute("/_app/portal/boletins")({ component: ClientBulletinsPage });
 
@@ -36,12 +37,19 @@ function ClientBulletinsPage() {
     const pdf = new jsPDF();
     const services = Array.from(new Set((bulletin.billing_v2_cycle_services ?? []).map((item) => item.waste_services?.name).filter(Boolean))) as string[];
     const items = (movements ?? []) as Movement[];
-    pdf.setFillColor(47, 111, 67); pdf.rect(0, 0, 210, 38, "F");
-    pdf.setTextColor(255, 255, 255); pdf.setFont("helvetica", "bold"); pdf.setFontSize(16); pdf.text("BOLETIM DE MEDIÇÃO", 105, 17, { align: "center" });
-    pdf.setFontSize(11); pdf.text(`BOLETIM #${String(bulletin.bulletin_number).padStart(3, "0")}`, 105, 26, { align: "center" });
-    pdf.setTextColor(40, 55, 45); pdf.setFontSize(11); pdf.text(`Unidade: ${bulletin.client_branches?.name || "Matriz"}`, 16, 53);
-    pdf.setFont("helvetica", "normal"); pdf.setFontSize(10); pdf.text(`Período: ${date(bulletin.period_start)} a ${date(bulletin.period_end)}`, 16, 61);
-    let y = 76;
+    pdf.setFillColor(62, 122, 79); pdf.rect(0, 0, 210, 46, "F");
+    pdf.setFillColor(250, 253, 249); pdf.roundedRect(12, 6, 40, 28, 3, 3, "F");
+    pdf.setDrawColor(210, 229, 205); pdf.setLineWidth(0.35); pdf.roundedRect(12, 6, 40, 28, 3, 3, "S");
+    try { const image = new Image(); image.src = jacobyLogo; await image.decode(); pdf.addImage(image, "PNG", 15, 9, 34, 21); } catch { /* a marca não bloqueia a emissão */ }
+    pdf.setTextColor(255, 255, 255); pdf.setFont("helvetica", "bold"); pdf.setFontSize(15); pdf.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8.5); pdf.text(`Período: ${date(bulletin.period_start)} a ${date(bulletin.period_end)}`, 105, 23, { align: "center" });
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(12); pdf.text(`BOLETIM #${String(bulletin.bulletin_number).padStart(3, "0")}`, 105, 30, { align: "center" });
+    pdf.setFillColor(236, 246, 228); pdf.roundedRect(14, 51, 182, 11, 2, 2, "F"); pdf.setTextColor(35, 96, 58); pdf.setFontSize(9); pdf.text("JACOBY SOLUÇÕES AMBIENTAIS · BOLETIM OPERACIONAL", 105, 58, { align: "center" });
+    pdf.setFillColor(247, 250, 246); pdf.roundedRect(14, 69, 182, 27, 3, 3, "F"); pdf.setDrawColor(184, 210, 176); pdf.roundedRect(14, 69, 182, 27, 3, 3, "S");
+    pdf.setTextColor(35, 96, 58); pdf.setFont("helvetica", "bold"); pdf.setFontSize(8); pdf.text("EMPRESA GERADORA / UNIDADE", 20, 76);
+    pdf.setTextColor(39, 61, 45); pdf.setFontSize(10); pdf.text(bulletin.client_branches?.name || "Matriz", 20, 84);
+    pdf.setTextColor(93, 112, 97); pdf.setFont("helvetica", "normal"); pdf.setFontSize(7.5); pdf.text("Documento disponibilizado para consulta no Portal do Cliente.", 20, 91);
+    let y = 109;
     pdf.setFont("helvetica", "bold"); pdf.setFontSize(11); pdf.text("Serviços incluídos", 16, y); y += 8;
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(10);
     (services.length ? services : ["Serviços operacionais do período"]).forEach((service) => { pdf.text(`• ${service}`, 20, y); y += 7; });
