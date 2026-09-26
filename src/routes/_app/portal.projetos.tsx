@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, CircleAlert, ClipboardList } from "lucide-react";
+import { CalendarDays, ChevronDown, CircleAlert, CircleCheck, ClipboardList } from "lucide-react";
 import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export const Route = createFileRoute("/_app/portal/projetos")({ component: ClientProjectsPage });
 
@@ -58,16 +59,23 @@ function ClientProjectsPage() {
       return (data ?? []) as Column[];
     },
   });
-  // Tarefas concluídas ficam preservadas no histórico interno da Jacoby, mas
-  // não permanecem no quadro de acompanhamento do cliente.
+  // O andamento mantém a estrutura completa do Kanban da Jacoby. Concluídas
+  // ficam disponíveis em um histórico recolhido, sem misturar-se às etapas ativas.
   const activeTasks = useMemo(() => tasks.filter((task) => statusFor(task) !== "done" && !task.completed_at), [tasks]);
+  const completedTasks = useMemo(() => tasks.filter((task) => statusFor(task) === "done" || !!task.completed_at), [tasks]);
   const columns = useMemo(() => {
-    const visible = configuredColumns.filter((column) => activeTasks.some((task) => task.column_id === column.id));
-    return visible.length ? visible : fallbackColumns;
-  }, [activeTasks, configuredColumns]);
+    return configuredColumns.length ? configuredColumns : fallbackColumns;
+  }, [configuredColumns]);
   const grouped = useMemo(() => columns.map((column) => ({ column, tasks: activeTasks.filter((task) => column.id === task.column_id || (!task.column_id && statusFor(task) === column.id)) })), [activeTasks, columns]);
 
-  return <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6"><header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Gestão de projetos</h1><p className="text-sm text-muted-foreground">Acompanhe o andamento das tarefas da sua empresa. Esta área é somente para visualização.</p><p className="mt-1 text-xs text-muted-foreground">Tarefas concluídas permanecem no histórico da Jacoby e deixam de aparecer neste quadro.</p></header>{isLoading ? <Card className="p-8 text-sm text-muted-foreground">Carregando tarefas...</Card> : <div className="flex gap-4 overflow-x-auto pb-4">{grouped.map(({ column, tasks: columnTasks }) => <section key={column.id} className="w-80 shrink-0"><div className="mb-3 flex items-center gap-2 px-1"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color || "#64748b" }} /><h2 className="font-semibold">{column.name}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{columnTasks.length}</span></div><div className="min-h-40 space-y-3 rounded-xl border bg-muted/25 p-3">{columnTasks.map((task) => <ProjectCard key={task.id} task={task} />)}{!columnTasks.length && <p className="p-4 text-center text-sm text-muted-foreground">Nenhuma tarefa nesta etapa.</p>}</div></section>)}</div>}</div>;
+  return <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6"><header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Gestão de projetos</h1><p className="text-sm text-muted-foreground">Acompanhe o andamento das tarefas da sua empresa. Esta área é somente para visualização.</p></header>{isLoading ? <Card className="p-8 text-sm text-muted-foreground">Carregando tarefas...</Card> : <><div className="flex gap-4 overflow-x-auto pb-4">{grouped.map(({ column, tasks: columnTasks }) => <section key={column.id} className="w-80 shrink-0"><div className="mb-3 flex items-center gap-2 px-1"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color || "#64748b" }} /><h2 className="font-semibold">{column.name}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{columnTasks.length}</span></div><div className="min-h-40 space-y-3 rounded-xl border bg-muted/25 p-3">{columnTasks.map((task) => <ProjectCard key={task.id} task={task} />)}{!columnTasks.length && <p className="p-4 text-center text-sm text-muted-foreground">Nenhuma tarefa nesta etapa.</p>}</div></section>)}</div><CompletedTasksSection tasks={completedTasks} /></>}</div>;
+}
+
+function CompletedTasksSection({ tasks }: { tasks: ProjectTask[] }) {
+  return <Collapsible className="rounded-xl border bg-muted/20">
+    <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/30"><span className="flex items-center gap-2 font-semibold"><CircleCheck className="h-5 w-5 text-primary" />Concluídas <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{tasks.length}</span></span><span className="flex items-center gap-2 text-sm text-muted-foreground">Ver histórico<ChevronDown className="h-4 w-4" /></span></CollapsibleTrigger>
+    <CollapsibleContent className="border-t p-4"><p className="mb-3 text-sm text-muted-foreground">Tarefas concluídas e arquivadas pela Jacoby.</p>{tasks.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tasks.map((task) => <ProjectCard key={task.id} task={task} />)}</div> : <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhuma tarefa concluída.</p>}</CollapsibleContent>
+  </Collapsible>;
 }
 
 function ProjectCard({ task }: { task: ProjectTask }) {
