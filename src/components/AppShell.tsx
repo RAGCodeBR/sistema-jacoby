@@ -115,6 +115,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname === "/portal/conta" ||
     pathname === "/portal/documentos" ||
     pathname === "/portal/movimentacoes" ||
+    pathname === "/portal/projetos" ||
     (pathname === "/portal/residuos" && activeWasteTab === "relatorios");
   const initials = (profile?.full_name || user?.email || "?").slice(0, 2).toUpperCase();
 
@@ -393,6 +394,10 @@ function PortalNavGroup({
         {isClient && <Link to="/portal/movimentacoes" onClick={onNavigate} className={item}>
           <ClipboardCheck className="h-4 w-4" />
           Movimentações
+        </Link>}
+        {isClient && <Link to="/portal/projetos" onClick={onNavigate} className={item}>
+          <ListChecks className="h-4 w-4" />
+          Gestão de projetos
         </Link>}
         {isClient && <Link to="/portal/documentos" onClick={onNavigate} className={item}>
           <FileText className="h-4 w-4" />
