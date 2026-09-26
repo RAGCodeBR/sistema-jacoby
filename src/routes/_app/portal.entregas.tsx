@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileText, Paperclip, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { type Task, useClients, useTasks } from "@/hooks/use-data";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -15,12 +16,14 @@ export const Route = createFileRoute("/_app/portal/entregas")({ component: Clien
 
 function ClientDeliveriesPage() {
   const { data: clients = [] } = useClients();
-  const { isClient, clientId: linkedClientId } = useAuth();
+  const { isClient, clientId: linkedClientId, user } = useAuth();
   const { data: tasks = [] } = useTasks();
   const [clientId, setClientId] = useState("");
   const [month, setMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [requestFiles, setRequestFiles] = useState<{ id: string; file_name: string; storage_path: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
   useEffect(() => {
     if (isClient) setClientId(linkedClientId ?? "");
     else if (!clientId && clients[0]) setClientId(clients[0].id);
@@ -31,8 +34,38 @@ function ClientDeliveriesPage() {
     if (value) setMonth(new Date(`${value}T12:00:00`));
   };
 
+  useEffect(() => {
+    if (!selectedTask) { setRequestFiles([]); return; }
+    void supabase.from("attachments").select("id,file_name,storage_path").eq("task_id", selectedTask.id).order("created_at").then(({ data, error }) => {
+      if (error) return toast.error(error.message);
+      setRequestFiles((data ?? []) as { id: string; file_name: string; storage_path: string }[]);
+    });
+  }, [selectedTask]);
+
+  const uploadResponse = async (file?: File) => {
+    if (!file || !selectedTask || !user) return;
+    setUploading(true);
+    const path = `${selectedTask.id}/cliente-${Date.now()}-${file.name}`;
+    const { error: uploadError } = await supabase.storage.from("task-attachments").upload(path, file);
+    if (uploadError) { setUploading(false); return toast.error(uploadError.message); }
+    const { data, error } = await supabase.from("attachments").insert({
+      task_id: selectedTask.id, file_name: file.name, storage_path: path,
+      mime_type: file.type || null, size_bytes: file.size, uploaded_by: user.id,
+    }).select("id,file_name,storage_path").single();
+    setUploading(false);
+    if (error) return toast.error(error.message);
+    setRequestFiles((current) => [...current, data as { id: string; file_name: string; storage_path: string }]);
+    toast.success("Documento enviado para a equipe Jacoby.");
+  };
+
+  const downloadResponse = async (file: { file_name: string; storage_path: string }) => {
+    const { data, error } = await supabase.storage.from("task-attachments").createSignedUrl(file.storage_path, 600, { download: file.file_name });
+    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível baixar o arquivo.");
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
   const client = clients.find((item) => item.id === clientId);
-  const deliveries = useMemo(() => tasks.filter((task) => task.client_id === clientId && task.due_date), [clientId, tasks]);
+  const deliveries = useMemo(() => tasks.filter((task) => task.client_id === clientId && task.client_portal_visible && task.client_document_request), [clientId, tasks]);
   const deliveriesByDay = useMemo(() => {
     const map = new Map<string, typeof deliveries>();
     deliveries.forEach((task) => {
@@ -45,10 +78,10 @@ function ClientDeliveriesPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
-      <header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Calendário de Entregas</h1><p className="text-sm text-muted-foreground">Veja a quantidade de tarefas e os prazos de entrega por cliente.</p></header>
+      <header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Solicitações de documentos</h1><p className="text-sm text-muted-foreground">Veja somente os documentos solicitados pela equipe Jacoby e seus respectivos prazos.</p></header>
       {isClient ? <Card className="p-4"><p className="text-sm text-muted-foreground">Cliente vinculado</p><p className="mt-1 font-semibold">{client?.name ?? "Cliente não vinculado"}</p></Card> : <Card className="p-4"><p className="mb-2 text-sm font-medium">Cliente</p><Select value={clientId} onValueChange={setClientId}><SelectTrigger className="max-w-md"><SelectValue placeholder="Selecione o cliente" /></SelectTrigger><SelectContent>{clients.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></Card>}
-      {!clientId ? <Empty text="Cadastre ou selecione um cliente para ver o calendário." /> : <Card className="overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><div><h2 className="font-semibold">Entregas de {client?.name}</h2><p className="text-sm capitalize text-muted-foreground">{format(month, "MMMM 'de' yyyy", { locale: ptBR })}</p></div><div className="flex flex-wrap items-center gap-1"><label className="sr-only" htmlFor="delivery-date">Escolher data</label><Input id="delivery-date" type="date" value={selectedDate} onChange={(event) => selectDate(event.target.value)} className="h-9 w-[150px]" /><Button size="icon" variant="outline" aria-label="Mês anterior" onClick={() => setMonth((current) => subMonths(current, 1))}><ChevronLeft className="h-4 w-4" /></Button><Button size="sm" variant="outline" onClick={() => { const today = new Date(); setMonth(today); setSelectedDate(format(today, "yyyy-MM-dd")); }}>Hoje</Button><Button size="icon" variant="outline" aria-label="Próximo mês" onClick={() => setMonth((current) => addMonths(current, 1))}><ChevronRight className="h-4 w-4" /></Button></div></div><div className="grid grid-cols-7 border-b bg-muted/40 text-center text-[10px] font-semibold uppercase text-muted-foreground sm:text-xs">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((label) => <div key={label} className="p-2">{label}</div>)}</div><div className="grid grid-cols-7">{days.map((day) => { const key = format(day, "yyyy-MM-dd"); const items = deliveriesByDay.get(key) ?? []; return <div key={key} className={`min-h-28 border-b border-r p-1.5 sm:min-h-36 sm:p-2 ${isSameMonth(day, month) ? "" : "bg-muted/20 text-muted-foreground"} ${key === selectedDate ? "bg-primary/5 ring-1 ring-inset ring-primary" : ""}`}><div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium">{format(day, "d")}</span>{items.length > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{items.length}</span>}</div><div className="space-y-1">{items.slice(0, 2).map((task) => <button key={task.id} type="button" onClick={() => setSelectedTask(task)} className="block w-full truncate rounded px-1 py-0.5 text-left text-[10px] text-foreground hover:bg-muted sm:text-xs" title={`Ver ${task.title}`}>{task.title}</button>)}{items.length > 2 && <div className="text-[10px] text-muted-foreground">+{items.length - 2} tarefas</div>}</div></div>; })}</div></Card>}
-      <Dialog open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)}><DialogContent className="max-w-sm"><DialogHeader><DialogTitle>{selectedTask?.title}</DialogTitle></DialogHeader>{selectedTask?.due_date && <p className="text-sm text-muted-foreground">Prazo: {format(new Date(selectedTask.due_date), "dd/MM/yyyy")}</p>}</DialogContent></Dialog>
+      {!clientId ? <Empty text="Cadastre ou selecione um cliente para ver as solicitações." /> : <Card className="overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><div><h2 className="font-semibold">Documentos solicitados para {client?.name}</h2><p className="text-sm capitalize text-muted-foreground">{format(month, "MMMM 'de' yyyy", { locale: ptBR })}</p></div><div className="flex flex-wrap items-center gap-1"><label className="sr-only" htmlFor="delivery-date">Escolher data</label><Input id="delivery-date" type="date" value={selectedDate} onChange={(event) => selectDate(event.target.value)} className="h-9 w-[150px]" /><Button size="icon" variant="outline" aria-label="Mês anterior" onClick={() => setMonth((current) => subMonths(current, 1))}><ChevronLeft className="h-4 w-4" /></Button><Button size="sm" variant="outline" onClick={() => { const today = new Date(); setMonth(today); setSelectedDate(format(today, "yyyy-MM-dd")); }}>Hoje</Button><Button size="icon" variant="outline" aria-label="Próximo mês" onClick={() => setMonth((current) => addMonths(current, 1))}><ChevronRight className="h-4 w-4" /></Button></div></div><div className="divide-y">{deliveries.length ? deliveries.sort((a,b) => (a.due_date || "").localeCompare(b.due_date || "")).map((task) => <button key={task.id} onClick={() => setSelectedTask(task)} className="flex w-full items-start gap-3 p-4 text-left hover:bg-muted/40"><FileText className="mt-0.5 h-5 w-5 text-primary" /><span><span className="block font-medium">{task.title}</span><span className="mt-1 block text-sm text-muted-foreground">{task.description || "Abra para ver os detalhes da solicitação."}</span>{task.due_date && <span className="mt-1 block text-xs text-muted-foreground">Prazo: {format(new Date(task.due_date), "dd/MM/yyyy")}</span>}</span></button>) : <Empty text="Nenhum documento foi solicitado no momento." />}</div></Card>}
+      <Dialog open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{selectedTask?.title}</DialogTitle></DialogHeader>{selectedTask?.description && <div className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: selectedTask.description }} />}{selectedTask?.due_date && <p className="text-sm text-muted-foreground">Prazo: {format(new Date(selectedTask.due_date), "dd/MM/yyyy")}</p>}<div className="space-y-3 border-t pt-4"><div><p className="font-medium">Arquivos da solicitação e resposta</p><p className="text-sm text-muted-foreground">Envie os documentos solicitados por aqui. Eles ficam disponíveis para a equipe Jacoby na mesma tarefa.</p></div>{requestFiles.length > 0 && <div className="space-y-2">{requestFiles.map((file) => <div key={file.id} className="flex items-center gap-2 rounded border p-2 text-sm"><Paperclip className="h-4 w-4 text-primary" /><span className="min-w-0 flex-1 truncate">{file.file_name}</span><Button size="sm" variant="outline" onClick={() => void downloadResponse(file)}><Download className="mr-1 h-3.5 w-3.5" />Baixar</Button></div>)}</div>}<label className="inline-flex cursor-pointer items-center gap-2"><Button type="button" variant="outline" disabled={uploading} asChild><span><Upload className="mr-2 h-4 w-4" />{uploading ? "Enviando..." : "Enviar documento"}</span></Button><input className="sr-only" type="file" disabled={uploading} onChange={(event) => { void uploadResponse(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label></div></DialogContent></Dialog>
     </div>
   );
 }

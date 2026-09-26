@@ -58,6 +58,8 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
   const [collaboratorPickerOpen, setCollaboratorPickerOpen] = useState(false);
   const [dueDate, setDueDate] = useState<string>("");
   const [dueTime, setDueTime] = useState<string>("");
+  const [clientPortalVisible, setClientPortalVisible] = useState(false);
+  const [clientDocumentRequest, setClientDocumentRequest] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const currentTaskIdRef = useRef<string | null>(null);
 
@@ -103,6 +105,8 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
       void loadCollaborators(task.id);
       setDueDate(task.due_date ? format(new Date(task.due_date), "yyyy-MM-dd") : "");
       setDueTime(normalizeDueTime(task.due_time));
+      setClientPortalVisible(!!task.client_portal_visible);
+      setClientDocumentRequest(!!task.client_document_request);
       currentTaskIdRef.current = task.id;
       setCurrentTaskId(task.id);
       setNewSubtask("");
@@ -111,7 +115,7 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
       loadRelated(task.id);
     } else {
       setTitle(""); setDescription(""); setStatus("todo"); setPriority("medium");
-      setColumnId(defaultColumnId ?? ""); setClientId(""); setAssigneeId(""); setCollaboratorIds([]); setDueDate(""); setDueTime("");
+      setColumnId(defaultColumnId ?? ""); setClientId(""); setAssigneeId(""); setCollaboratorIds([]); setDueDate(""); setDueTime(""); setClientPortalVisible(false); setClientDocumentRequest(false);
       currentTaskIdRef.current = null;
       setCurrentTaskId(null);
       setSubtasks([]); setComments([]); setAttachments([]); setNewCommentTitle(""); setNewComment(""); setOpenComments({});
@@ -186,6 +190,8 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
     due_date: deadlineToIso(dueDate),
     due_time: dueDate ? dueTime || null : null,
     completed_at: status === "done" ? new Date().toISOString() : null,
+    client_portal_visible: Boolean(clientId && clientPortalVisible && clientDocumentRequest),
+    client_document_request: Boolean(clientId && clientDocumentRequest),
   });
 
   // React can retain the previous user while Supabase refreshes or clears an
@@ -666,6 +672,32 @@ export function TaskDialog({ open, onOpenChange, task, defaultColumnId }: Props)
               </Select>
             </div>
           </div>
+
+          {clientId && (
+            <div className="space-y-2 rounded-md border border-primary/20 bg-primary/5 p-3">
+              <p className="text-sm font-medium">Solicitação de documento no portal</p>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox
+                  checked={clientDocumentRequest}
+                  onCheckedChange={(checked) => {
+                    const enabled = Boolean(checked);
+                    setClientDocumentRequest(enabled);
+                    if (enabled) setClientPortalVisible(true);
+                  }}
+                />
+                Solicitar documento a este cliente
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={clientPortalVisible}
+                  disabled={!clientDocumentRequest}
+                  onCheckedChange={(checked) => setClientPortalVisible(Boolean(checked))}
+                />
+                Exibir a solicitação no portal do cliente
+              </label>
+              <p className="text-xs text-muted-foreground">O cliente verá apenas o título, a descrição, o prazo e os arquivos desta solicitação. As demais tarefas continuam internas.</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Descrição</Label>

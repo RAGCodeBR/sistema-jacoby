@@ -44,6 +44,7 @@ type Cycle = {
   outsourced_company_id: string | null;
   bulletin_number: number;
   finalized_at: string | null;
+  client_portal_visible: boolean;
 };
 type Placement = {
   id: string;
@@ -880,6 +881,21 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const setCyclePortalVisibility = useMutation({
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
+      const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .update({ client_portal_visible: visible })
+        .eq("id", id)
+        .eq("status", "closed");
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
+      toast.success(variables.visible ? "Boletim publicado no portal do cliente." : "Boletim removido do portal do cliente.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const remove = async (table: string, id: string) => {
     if (!confirm("Excluir este lançamento?") || !id) return;
     const { error } = await (supabase.from(table as any) as any).delete().eq("id", id);
@@ -1297,8 +1313,10 @@ export function BillingV2Module() {
               <TabsTrigger value="locacoes">Equipamentos em locação</TabsTrigger>
               <TabsTrigger value="movimentos">Movimentações</TabsTrigger>
               <TabsTrigger value="boletim">Boletim</TabsTrigger>
+              <TabsTrigger value="emitidos">Boletins emitidos</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Escolha quais boletins finalizados podem ser consultados pelo cliente no portal. Nenhum valor comercial é exibido lá.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{clientCycles.filter((item) => item.status === "closed").length ? clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="space-y-4">
               <Card className="p-4">
                 <h2 className="font-semibold">Nova colocação em locação</h2>

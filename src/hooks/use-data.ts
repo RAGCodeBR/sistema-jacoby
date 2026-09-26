@@ -35,6 +35,8 @@ export interface Task {
   created_at: string;
   updated_at: string;
   card_width: number | null;
+  client_portal_visible: boolean;
+  client_document_request: boolean;
 }
 export interface TaskStatus {
   id: string;

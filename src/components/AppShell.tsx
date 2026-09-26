@@ -395,6 +395,10 @@ function PortalNavGroup({
           <FileText className="h-4 w-4" />
           Documentos
         </Link>}
+        {isClient && <Link to="/portal/entregas" onClick={onNavigate} className={item}>
+          <ClipboardCheck className="h-4 w-4" />
+          Solicitações
+        </Link>}
         {(isClient || hasPermission("portal_units")) && <Link to="/portal/unidades" onClick={onNavigate} className={item}>
           <MapPinned className="h-4 w-4" />
           Unidades e pátios
