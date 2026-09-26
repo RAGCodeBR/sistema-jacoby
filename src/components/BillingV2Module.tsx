@@ -277,6 +277,7 @@ export function BillingV2Module() {
     queryFn: async () => {
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .select("*")
+        .eq("is_demo", false)
         .order("created_at", { ascending: false })
         .limit(8);
       if (error) throw error;
