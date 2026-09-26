@@ -26,7 +26,10 @@ const formatKg = (value: number) => `${new Intl.NumberFormat("pt-BR", { maximumF
 function ClientMovementsPage() {
   const { clientId } = useAuth();
   const { data: movements = [], isLoading } = useQuery({
-    queryKey: ["client-confirmed-movements"],
+    // Nunca reutilizar a memória de outro login no mesmo navegador. Isso evita
+    // que uma troca de conta mostre momentaneamente dados de outro cliente.
+    queryKey: ["client-confirmed-movements", clientId],
+    enabled: !!clientId,
     queryFn: async () => {
       const { data, error } = await (supabase.rpc("jacoby_client_confirmed_movements") as any);
       if (error) throw error;
