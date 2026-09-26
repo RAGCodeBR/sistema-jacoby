@@ -30,6 +30,7 @@ import { Route as ApiOnedriveRouteImport } from './routes/api/onedrive'
 import { Route as AppClientReportClientIdRouteImport } from './routes/_app/client-report.$clientId'
 import { Route as AppClientsIndexRouteImport } from './routes/_app/clients.index'
 import { Route as AppClientsNewRouteImport } from './routes/_app/clients.new'
+import { Route as AppPortalBoletinsRouteImport } from './routes/_app/portal.boletins'
 import { Route as AppPortalContaRouteImport } from './routes/_app/portal.conta'
 import { Route as AppPortalDocumentosRouteImport } from './routes/_app/portal.documentos'
 import { Route as AppPortalEntregasRouteImport } from './routes/_app/portal.entregas'
@@ -150,6 +151,11 @@ const AppClientsNewRoute = AppClientsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AppClientsRoute,
 } as any)
+const AppPortalBoletinsRoute = AppPortalBoletinsRouteImport.update({
+  id: '/portal/boletins',
+  path: '/portal/boletins',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPortalContaRoute = AppPortalContaRouteImport.update({
   id: '/portal/conta',
   path: '/portal/conta',
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/portal/boletins': typeof AppPortalBoletinsRoute
   '/portal/conta': typeof AppPortalContaRoute
   '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
@@ -283,6 +290,7 @@ export interface FileRoutesByTo {
   '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/clients/new': typeof AppClientsNewRoute
+  '/portal/boletins': typeof AppPortalBoletinsRoute
   '/portal/conta': typeof AppPortalContaRoute
   '/portal/documentos': typeof AppPortalDocumentosRoute
   '/portal/entregas': typeof AppPortalEntregasRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/api/onedrive': typeof ApiOnedriveRouteWithChildren
   '/_app/client-report/$clientId': typeof AppClientReportClientIdRoute
   '/_app/clients/new': typeof AppClientsNewRoute
+  '/_app/portal/boletins': typeof AppPortalBoletinsRoute
   '/_app/portal/conta': typeof AppPortalContaRoute
   '/_app/portal/documentos': typeof AppPortalDocumentosRoute
   '/_app/portal/entregas': typeof AppPortalEntregasRoute
@@ -361,6 +370,7 @@ export interface FileRouteTypes {
     | '/api/onedrive'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/portal/boletins'
     | '/portal/conta'
     | '/portal/documentos'
     | '/portal/entregas'
@@ -396,6 +406,7 @@ export interface FileRouteTypes {
     | '/api/onedrive'
     | '/client-report/$clientId'
     | '/clients/new'
+    | '/portal/boletins'
     | '/portal/conta'
     | '/portal/documentos'
     | '/portal/entregas'
@@ -434,6 +445,7 @@ export interface FileRouteTypes {
     | '/api/onedrive'
     | '/_app/client-report/$clientId'
     | '/_app/clients/new'
+    | '/_app/portal/boletins'
     | '/_app/portal/conta'
     | '/_app/portal/documentos'
     | '/_app/portal/entregas'
@@ -608,6 +620,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientsNewRouteImport
       parentRoute: typeof AppClientsRoute
     }
+    '/_app/portal/boletins': {
+      id: '/_app/portal/boletins'
+      path: '/portal/boletins'
+      fullPath: '/portal/boletins'
+      preLoaderRoute: typeof AppPortalBoletinsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/portal/conta': {
       id: '/_app/portal/conta'
       path: '/portal/conta'
@@ -766,6 +785,7 @@ interface AppRouteChildren {
   AppTrashRoute: typeof AppTrashRoute
   AppUsersRoute: typeof AppUsersRoute
   AppClientReportClientIdRoute: typeof AppClientReportClientIdRoute
+  AppPortalBoletinsRoute: typeof AppPortalBoletinsRoute
   AppPortalContaRoute: typeof AppPortalContaRoute
   AppPortalDocumentosRoute: typeof AppPortalDocumentosRoute
   AppPortalEntregasRoute: typeof AppPortalEntregasRoute
@@ -791,6 +811,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTrashRoute: AppTrashRoute,
   AppUsersRoute: AppUsersRoute,
   AppClientReportClientIdRoute: AppClientReportClientIdRoute,
+  AppPortalBoletinsRoute: AppPortalBoletinsRoute,
   AppPortalContaRoute: AppPortalContaRoute,
   AppPortalDocumentosRoute: AppPortalDocumentosRoute,
   AppPortalEntregasRoute: AppPortalEntregasRoute,

@@ -4,6 +4,7 @@
  */
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
+import { useTasks } from "@/hooks/use-data";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -366,6 +367,8 @@ function PortalNavGroup({
   hasPermission: (permission: string) => boolean;
   onNavigate?: () => void;
 }) {
+  const { data: portalTasks = [] } = useTasks();
+  const hasPendingRequests = isClient && portalTasks.some((task) => task.client_portal_visible && task.client_document_request && task.status !== "done");
   const item =
     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/50";
   if (!expanded)
@@ -397,7 +400,12 @@ function PortalNavGroup({
         </Link>}
         {isClient && <Link to="/portal/entregas" onClick={onNavigate} className={item}>
           <ClipboardCheck className="h-4 w-4" />
-          Solicitações
+          <span className="flex-1">Solicitações</span>
+          {hasPendingRequests && <span className="h-2 w-2 rounded-full bg-destructive" aria-label="Há solicitações pendentes" />}
+        </Link>}
+        {isClient && <Link to="/portal/boletins" onClick={onNavigate} className={item}>
+          <FileText className="h-4 w-4" />
+          Boletins emitidos
         </Link>}
         {(isClient || hasPermission("portal_units")) && <Link to="/portal/unidades" onClick={onNavigate} className={item}>
           <MapPinned className="h-4 w-4" />
