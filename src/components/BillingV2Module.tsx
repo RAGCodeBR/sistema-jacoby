@@ -172,7 +172,7 @@ const logoAsDataUrl = async (url: string) => {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5">
       <Label>{label}</Label>
       {children}
     </div>
@@ -1028,10 +1028,14 @@ export function BillingV2Module() {
       doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(cycle.bulletin_number)}`, 105, 29, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 37, { align: "center" });
       if (residueFilterId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${selectedResidueName}`, 105, 42, { align: "center" }); }
-      doc.setFillColor(236, 246, 228); doc.roundedRect(14, 51, 182, 11, 2, 2, "F");
+      const invoiceIssuerNotice = `NOTA FISCAL SERÁ EMITIDA PELA ${cycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`;
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-      doc.text(`NOTA FISCAL SERÁ EMITIDA PELA ${cycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`, 105, 58, { align: "center" });
-      const companyY = 69;
+      const invoiceIssuerNoticeLines = doc.splitTextToSize(invoiceIssuerNotice, 168);
+      const invoiceIssuerNoticeHeight = Math.max(11, 6 + invoiceIssuerNoticeLines.length * 4);
+      doc.setFillColor(236, 246, 228); doc.roundedRect(14, 51, 182, invoiceIssuerNoticeHeight, 2, 2, "F");
+      const invoiceIssuerNoticeY = 51 + (invoiceIssuerNoticeHeight - (invoiceIssuerNoticeLines.length - 1) * 4) / 2 + 1.2;
+      doc.text(invoiceIssuerNoticeLines, 105, invoiceIssuerNoticeY, { align: "center", lineHeightFactor: 1.1 });
+      const companyY = 51 + invoiceIssuerNoticeHeight + 7;
       const drawCompanyCard = (x: number, role: string, name: string, details: string) => {
         doc.setFillColor(247, 250, 246); doc.roundedRect(x, companyY, 88, 34, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(x, companyY, 88, 34, 3, 3, "S");
         doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.text(role.toUpperCase(), x + 5, companyY + 7);
@@ -1631,7 +1635,7 @@ export function BillingV2Module() {
                   Escolha quem emite o demonstrativo. Quando a terceirizada for a emissora, o PDF
                   traz o logo dela junto ao logo da Jacoby e lista somente os serviços vinculados a ela.
                 </p>
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.4fr)_minmax(0,1.75fr)]">
                   <Field label="Emitido por">
                     <Select
                       value={cycle?.issuer_type || "jacoby"}
@@ -1649,7 +1653,7 @@ export function BillingV2Module() {
                         saveIssuer.mutate({ issuerType, companyId: firstCompanyId });
                       }}
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="jacoby">Jacoby Soluções Ambientais</SelectItem>
                         <SelectItem value="outsourced">Empresa terceirizada</SelectItem>
@@ -1662,7 +1666,7 @@ export function BillingV2Module() {
                         value={cycle.outsourced_company_id || ""}
                         onValueChange={(companyId) => saveIssuer.mutate({ issuerType: "outsourced", companyId })}
                       >
-                        <SelectTrigger><SelectValue placeholder="Selecionar terceirizada" /></SelectTrigger>
+                        <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar terceirizada" /></SelectTrigger>
                         <SelectContent>
                           {outsourcedCompanies.map((company) => (
                             <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>
@@ -1671,7 +1675,7 @@ export function BillingV2Module() {
                       </Select>
                     </Field>
                   )}
-                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm md:col-span-2">
+                  <div className="min-w-0 break-words rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm md:col-span-2 xl:col-span-1">
                     <p className="text-xs font-medium uppercase text-primary">Destaque no documento</p>
                     <p className="mt-1 font-semibold">Emitido por {cycle?.issuer_type === "outsourced" ? issuerCompany?.trade_name || issuerCompany?.legal_name || "empresa terceirizada" : "Jacoby Soluções Ambientais"}</p>
                   </div>
