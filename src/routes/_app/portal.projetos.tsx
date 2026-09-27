@@ -19,6 +19,13 @@ const fallbackColumns = [
 ];
 const statusFor = (task: ProjectTask) => task.status === "done" ? "done" : task.status || "todo";
 const priorityLabel: Record<string, string> = { low: "Baixa", medium: "Média", high: "Alta", urgent: "Urgente" };
+function statusForColumn(column: Column) {
+  const name = column.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (name.includes("fazer") || name.includes("pendente")) return "todo";
+  if (name.includes("andamento") || name.includes("progresso")) return "in_progress";
+  if (name.includes("revis")) return "review";
+  return null;
+}
 // Tarefas antigas podem ter sido salvas como dd/mm/aaaa. O portal aceita os
 // dois formatos para não exibir "Invalid Date" ao cliente.
 function parseDeadline(value: string | null) {
@@ -66,7 +73,7 @@ function ClientProjectsPage() {
   const columns = useMemo(() => {
     return configuredColumns.length ? configuredColumns : fallbackColumns;
   }, [configuredColumns]);
-  const grouped = useMemo(() => columns.map((column) => ({ column, tasks: activeTasks.filter((task) => column.id === task.column_id || (!task.column_id && statusFor(task) === column.id)) })), [activeTasks, columns]);
+  const grouped = useMemo(() => columns.map((column) => ({ column, tasks: activeTasks.filter((task) => column.id === task.column_id || (!task.column_id && statusFor(task) === statusForColumn(column))) })), [activeTasks, columns]);
 
   return <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6"><header><p className="text-sm font-medium text-primary">Portal do Cliente</p><h1 className="text-2xl font-bold">Gestão de projetos</h1><p className="text-sm text-muted-foreground">Acompanhe o andamento das tarefas da sua empresa. Esta área é somente para visualização.</p></header>{isLoading ? <Card className="p-8 text-sm text-muted-foreground">Carregando tarefas...</Card> : <><div className="flex gap-4 overflow-x-auto pb-4">{grouped.map(({ column, tasks: columnTasks }) => <section key={column.id} className="w-80 shrink-0"><div className="mb-3 flex items-center gap-2 px-1"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: column.color || "#64748b" }} /><h2 className="font-semibold">{column.name}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{columnTasks.length}</span></div><div className="min-h-40 space-y-3 rounded-xl border bg-muted/25 p-3">{columnTasks.map((task) => <ProjectCard key={task.id} task={task} />)}{!columnTasks.length && <p className="p-4 text-center text-sm text-muted-foreground">Nenhuma tarefa nesta etapa.</p>}</div></section>)}</div><CompletedTasksSection tasks={completedTasks} /></>}</div>;
 }
