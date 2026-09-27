@@ -3,6 +3,7 @@
  * Expõe sessão, perfil, categoria (admin/colaborador/cliente) e permissões de navegação.
  */
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -118,6 +119,7 @@ export async function signInLocalPreviewAccount({ email, password }: { email: st
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -129,6 +131,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const loadedProfileUserId = useRef<string | null>(null);
   const loadingProfileUserId = useRef<string | null>(null);
+  const cachedSessionUserId = useRef<string | null | undefined>(undefined);
+
+  // A troca de login não pode reaproveitar consultas da pessoa anterior. Esta
+  // limpeza fica no provedor de autenticação (e não na tela), portanto ocorre
+  // mesmo enquanto a navegação desmonta o AppShell no logout.
+  const synchronizeQuerySession = (nextUserId: string | null) => {
+    if (cachedSessionUserId.current !== undefined && cachedSessionUserId.current !== nextUserId) {
+      queryClient.clear();
+    }
+    cachedSessionUserId.current = nextUserId;
+  };
 
   const loadProfile = async (uid: string) => {
     setLoading(true);
@@ -171,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const restoreLocalSession = () => {
         ensureLocalBoard();
         const account = getLocalAccounts().find((item) => item.id === localStorage.getItem(localSessionKey));
+        synchronizeQuerySession(account?.id ?? null);
         setSession(null);
         setUser(account ? ({ id: account.id, email: account.email } as User) : null);
         setProfile(account ? { id: account.id, full_name: account.fullName, email: account.email, avatar_url: null, theme_preferences: null } : null);
@@ -188,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Supabase emits auth state changes after sign-in, sign-out and token refresh.
     // The timeout avoids updating profile data inside the auth callback stack.
     const { data: sub } = supabase.auth.onAuthStateChange((event, s: Session | null) => {
+      synchronizeQuerySession(s?.user.id ?? null);
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
@@ -205,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     // Initial page load: restore any saved session from localStorage.
     supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
+      synchronizeQuerySession(data.session?.user.id ?? null);
       setSession(data.session);
       setUser(data.session?.user ?? null);
       if (data.session?.user) scheduleProfileLoad(data.session.user.id);
@@ -220,6 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     // Supabase clears the persisted browser session; the listener above resets local React state.
+    synchronizeQuerySession(null);
     await supabase.auth.signOut();
   };
 
