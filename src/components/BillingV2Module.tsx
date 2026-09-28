@@ -1174,18 +1174,35 @@ export function BillingV2Module() {
           text: item.observation!.trim(),
         })) : []),
       ];
-      doc.setFillColor(35, 96, 58);
-      doc.roundedRect(14, y, 182, 9, 2, 2, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7.2);
-      doc.text("ITEM", 20, y + 6);
-      doc.text("TIPO", 74, y + 6);
-      doc.text("QUANTIDADE", 108, y + 6);
-      doc.text("VALOR UNIT.", 139, y + 6);
-      doc.text("TOTAL", 190, y + 6, { align: "right" });
-      y += 9;
+      const drawContinuationTitle = (title: string) => {
+        doc.setFillColor(244, 248, 242);
+        doc.roundedRect(14, 10, 182, 8, 2, 2, "F");
+        doc.setTextColor(35, 96, 58);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.text(title, 20, 15.5);
+      };
+      const drawItemsHeader = () => {
+        doc.setFillColor(35, 96, 58);
+        doc.roundedRect(14, y, 182, 9, 2, 2, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.2);
+        doc.text("ITEM", 20, y + 6);
+        doc.text("TIPO", 74, y + 6);
+        doc.text("QUANTIDADE", 108, y + 6);
+        doc.text("VALOR UNIT.", 139, y + 6);
+        doc.text("TOTAL", 190, y + 6, { align: "right" });
+        y += 9;
+      };
+      drawItemsHeader();
       items.forEach((item, itemIndex) => {
+        if (y + 10 > 266) {
+          doc.addPage();
+          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${bulletinNumber(printableCycle.bulletin_number)} · ITENS`);
+          y = 23;
+          drawItemsHeader();
+        }
         if (itemIndex % 2 === 0) {
           doc.setFillColor(247, 250, 246);
           doc.rect(14, y, 182, 10, "F");
@@ -1209,12 +1226,7 @@ export function BillingV2Module() {
         if (y + observationHeight + 30 > 272) {
           doc.addPage();
           y = 18;
-          doc.setFillColor(244, 248, 242);
-          doc.roundedRect(14, 10, 182, 8, 2, 2, "F");
-          doc.setTextColor(35, 96, 58);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(8);
-          doc.text(`CONTINUAÇÃO · BOLETIM ${bulletinNumber(printableCycle.bulletin_number)} · OBSERVAÇÕES E TOTAL`, 20, 15.5);
+          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${bulletinNumber(printableCycle.bulletin_number)} · OBSERVAÇÕES E TOTAL`);
         }
         doc.setFillColor(255, 248, 225);
         doc.setDrawColor(224, 184, 72);
