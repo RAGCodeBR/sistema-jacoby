@@ -1132,18 +1132,21 @@ export function BillingV2Module() {
           name: `Locação · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id))}`,
           type: "Equipamento",
           quantity: `${number(Number(item.quantity))} un.`,
+          unitValue: Number(item.monthly_rental_rate || 0),
           value: Number(item.quantity) * Number(item.monthly_rental_rate || 0),
         })),
         ...branchMoves.filter((item) => Number(item.removed_quantity || 0) > 0).map((item) => ({
           name: `Troca · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id || ""))}`,
           type: item.replacement_equipment_id ? `Entrada: ${equipmentName(equipment.find((entry) => entry.id === item.replacement_equipment_id || ""))}` : "Troca",
           quantity: `${number(Number(item.removed_quantity))} un.`,
+          unitValue: Number(item.exchange_rate || 0),
           value: Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0),
         })),
         ...Object.values(treatmentByResidue).filter((item) => item.weight > 0).map((item) => ({
           name: residues.find((entry) => entry.id === item.residueId)?.name || "Tratamento de resíduos",
           type: "Resíduo",
           quantity: `${number(item.weight)} kg`,
+          unitValue: item.weight ? item.value / item.weight : 0,
           value: item.value,
         })),
         ...(index === 0
@@ -1151,6 +1154,7 @@ export function BillingV2Module() {
               name: services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço",
               type: "Serviço terceirizado",
               quantity: `${number(Number(item.quantity || 1))} un.`,
+              unitValue: Number(item.unit_amount ?? item.amount ?? 0),
               value: Number(item.amount || 0),
             }))
           : []),
@@ -1173,11 +1177,12 @@ export function BillingV2Module() {
       doc.roundedRect(14, y, 182, 9, 2, 2, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
+      doc.setFontSize(7.2);
       doc.text("ITEM", 20, y + 6);
-      doc.text("TIPO", 104, y + 6);
-      doc.text("QUANTIDADE", 139, y + 6);
-      doc.text("VALOR", 190, y + 6, { align: "right" });
+      doc.text("TIPO", 74, y + 6);
+      doc.text("QUANTIDADE", 108, y + 6);
+      doc.text("VALOR UNIT.", 139, y + 6);
+      doc.text("TOTAL", 190, y + 6, { align: "right" });
       y += 9;
       items.forEach((item, itemIndex) => {
         if (itemIndex % 2 === 0) {
@@ -1186,11 +1191,12 @@ export function BillingV2Module() {
         }
         doc.setTextColor(39, 61, 45);
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(8.5);
-        doc.text(doc.splitTextToSize(item.name, 78)[0], 20, y + 6.5);
+        doc.setFontSize(7.6);
+        doc.text(doc.splitTextToSize(item.name, 50)[0], 20, y + 6.5);
         doc.setTextColor(93, 112, 97);
-        doc.text(doc.splitTextToSize(item.type, 32)[0], 104, y + 6.5);
-        doc.text(item.quantity, 139, y + 6.5);
+        doc.text(doc.splitTextToSize(item.type, 28)[0], 74, y + 6.5);
+        doc.text(item.quantity, 108, y + 6.5);
+        doc.text(money(item.unitValue), 139, y + 6.5);
         doc.setTextColor(39, 61, 45);
         doc.text(money(item.value), 190, y + 6.5, { align: "right" });
         y += 10;
