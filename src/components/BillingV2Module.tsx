@@ -1994,6 +1994,7 @@ function PlacementTable({
                 <td className="p-2">
                   {equipmentName(equipment.find((item) => item.id === row.equipment_id))}
                 </td>
+                <td className="p-2 text-muted-foreground">—</td>
                 <td className="p-2">
                   {residues.find((item) => item.id === row.waste_residue_id)?.name || "—"}
                 </td>
