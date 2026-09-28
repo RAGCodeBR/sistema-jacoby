@@ -1066,7 +1066,17 @@ export function BillingV2Module() {
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.text(`Período: ${new Date(`${printableCycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${printableCycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(printableCycle.bulletin_number)}`, 105, 29, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(pdfClientName.toUpperCase(), 105, 37, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+      const clientHeaderMaxWidth = pdfDocumentThirdParty?.logo_url ? 96 : 138;
+      const clientHeaderName = (() => {
+        const name = pdfClientName.toUpperCase();
+        if (doc.getTextWidth(name) <= clientHeaderMaxWidth) return name;
+        const ellipsis = "...";
+        let abbreviated = name;
+        while (abbreviated.length && doc.getTextWidth(`${abbreviated}${ellipsis}`) > clientHeaderMaxWidth) abbreviated = abbreviated.slice(0, -1);
+        return `${abbreviated.trimEnd()}${ellipsis}`;
+      })();
+      doc.text(clientHeaderName, 105, 37, { align: "center" });
       if (pdfResidueId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${pdfResidueName}`, 105, 42, { align: "center" }); }
       const invoiceIssuerNotice = `NOTA FISCAL SERÁ EMITIDA PELA ${printableCycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`;
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
