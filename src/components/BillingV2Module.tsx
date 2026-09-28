@@ -1133,11 +1133,25 @@ export function BillingV2Module() {
         ...(index === 0
           ? pdfServices.map((item) => ({
               name: services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço",
-              type: item.observation ? `Serviço · ${item.observation}` : "Serviço terceirizado",
+              type: "Serviço terceirizado",
               quantity: `${number(Number(item.quantity || 1))} un.`,
               value: Number(item.amount || 0),
             }))
           : []),
+      ];
+      const observations = [
+        ...branchPlacements.filter((item) => item.observation?.trim()).map((item) => ({
+          label: `Locação · ${equipmentName(equipment.find((entry) => entry.id === item.equipment_id))}`,
+          text: item.observation!.trim(),
+        })),
+        ...branchMoves.filter((item) => item.observation?.trim()).map((item) => ({
+          label: `Movimentação${item.service_order ? ` · OS ${item.service_order}` : ""}`,
+          text: item.observation!.trim(),
+        })),
+        ...(index === 0 ? pdfServices.filter((item) => item.observation?.trim()).map((item) => ({
+          label: `Serviço · ${services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço"}`,
+          text: item.observation!.trim(),
+        })) : []),
       ];
       doc.setFillColor(35, 96, 58);
       doc.roundedRect(14, y, 182, 9, 2, 2, "F");
@@ -1166,6 +1180,26 @@ export function BillingV2Module() {
         y += 10;
       });
       const branchTotal = items.reduce((sum, item) => sum + item.value, 0);
+      if (observations.length) {
+        const observationLines = observations.flatMap((item) => doc.splitTextToSize(`${item.label}: ${item.text}`, 168));
+        const observationHeight = 8 + observationLines.length * 3.6;
+        if (y + observationHeight + 30 > 272) {
+          doc.addPage();
+          y = await drawHeader(pageBranch, 0);
+        }
+        doc.setFillColor(255, 248, 225);
+        doc.setDrawColor(224, 184, 72);
+        doc.roundedRect(14, y, 182, observationHeight, 2, 2, "FD");
+        doc.setTextColor(126, 86, 10);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.text("OBSERVAÇÕES", 20, y + 5.5);
+        doc.setTextColor(79, 67, 36);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.2);
+        doc.text(observationLines, 20, y + 10.5, { lineHeightFactor: 1.2 });
+        y += observationHeight + 5;
+      }
       y += 8;
       doc.setFillColor(232, 244, 226);
       doc.roundedRect(118, y, 78, 18, 3, 3, "F");
