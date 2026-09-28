@@ -722,7 +722,7 @@ export function BillingV2Module() {
       toast.success("Equipamento incluído em locação.");
     },
     onError: (error: Error) => toast.error(error.message),
-  }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
+  });
   const addMovement = useMutation({
     mutationFn: async () => {
       if (savingMovementRef.current) return;
@@ -1010,7 +1010,7 @@ export function BillingV2Module() {
         serviceNameKey(link.waste_services?.name) === serviceNameKey(service.name)
       )
     );
-  });
+  }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
   const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string; download?: boolean }) => {
     const printableCycle = options?.targetCycle || cycle;
     const pdfPlacements = options?.placements || filteredPlacements;
