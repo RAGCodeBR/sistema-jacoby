@@ -216,6 +216,9 @@ export function BillingV2Module() {
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
   const [serviceExecutionDate, setServiceExecutionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedBulkCycleIds, setSelectedBulkCycleIds] = useState<string[]>([]);
+  const [isFinalizingBulk, setIsFinalizingBulk] = useState(false);
+  const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
 
   // Em uma recarga causada pelo próprio navegador, a primeira renderização pode
   // ocorrer no servidor. Restauramos a aba somente depois da hidratação e antes
@@ -990,18 +993,30 @@ export function BillingV2Module() {
       )
     );
   }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
-  const generatePdf = async () => {
-    const confirmedMovements = filteredMovements.filter((item) => item.confirmed);
-    const branchIds = Array.from(new Set([...filteredPlacements, ...confirmedMovements].map((item) => item.branch_id)));
-    if (!cycle || !branchIds.length) {
+  const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string }) => {
+    const printableCycle = options?.targetCycle || cycle;
+    const pdfPlacements = options?.placements || filteredPlacements;
+    const pdfMovements = options?.movements || filteredMovements;
+    const pdfServices = options?.services || filteredServices;
+    const pdfResidueId = options?.includeResidue ?? residueFilterId;
+    const pdfClientName = clients.find((item) => item.id === printableCycle?.client_id)?.name || clientName;
+    const pdfResidueName = pdfResidueId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === pdfResidueId)?.name || "Resíduo selecionado";
+    const pdfIssuerCompany = outsourcedCompanies.find((company) => company.id === printableCycle?.outsourced_company_id);
+    const pdfDocumentThirdParty = pdfIssuerCompany || outsourcedCompanies.find((company) =>
+      pdfServices.some((service) => service.outsourced_company_id === company.id),
+    );
+    const pdfHasThirdPartyContext = Boolean(pdfDocumentThirdParty) || pdfServices.length > 0;
+    const confirmedMovements = pdfMovements.filter((item) => item.confirmed);
+    const branchIds = Array.from(new Set([...pdfPlacements, ...confirmedMovements].map((item) => item.branch_id)));
+    if (!printableCycle || !branchIds.length) {
       toast.error("Registre uma locação ou movimentação antes de gerar o PDF.");
       return;
     }
     const { jsPDF } = await import("jspdf");
     const doc = new jsPDF();
     const jacoby = companyProfile || { legal_name: "JACOBY SOLUÇÕES AMBIENTAIS", trade_name: "Jacoby Soluções Ambientais", cnpj: null, address: null, postal_code: null, phone: null, email: null, environmental_license: null, logo_url: null };
-    const issuerName = cycle.issuer_type === "outsourced" && issuerCompany
-      ? issuerCompany.trade_name || issuerCompany.legal_name
+    const issuerName = printableCycle.issuer_type === "outsourced" && pdfIssuerCompany
+      ? pdfIssuerCompany.trade_name || pdfIssuerCompany.legal_name
       : jacoby.trade_name || jacoby.legal_name;
     const companyDetails = (company: { cnpj?: string | null; address?: string | null; postal_code?: string | null; phone?: string | null; environmental_license?: string | null }) =>
       [company.cnpj && `CNPJ: ${company.cnpj}`, company.address, company.postal_code && `CEP: ${company.postal_code}`, company.phone && `Fone: ${company.phone}`, company.environmental_license && `Licença: ${company.environmental_license}`].filter(Boolean).join(" · ");
@@ -1017,18 +1032,18 @@ export function BillingV2Module() {
       doc.setFillColor(250, 253, 249); doc.roundedRect(12, 6, 40, 28, 3, 3, "F");
       doc.setDrawColor(210, 229, 205); doc.setLineWidth(0.35); doc.roundedRect(12, 6, 40, 28, 3, 3, "S");
       await drawLogo(jacoby.logo_url, 15, 9, 34, 21, true);
-      if (documentThirdParty?.logo_url) {
+      if (pdfDocumentThirdParty?.logo_url) {
         doc.setFillColor(250, 253, 249); doc.roundedRect(158, 6, 40, 28, 3, 3, "F");
         doc.setDrawColor(210, 229, 205); doc.roundedRect(158, 6, 40, 28, 3, 3, "S");
-        await drawLogo(documentThirdParty.logo_url, 161, 9, 34, 21);
+        await drawLogo(pdfDocumentThirdParty.logo_url, 161, 9, 34, 21);
       }
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-      doc.text(`Período: ${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(cycle.bulletin_number)}`, 105, 29, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(clientName.toUpperCase(), 105, 37, { align: "center" });
-      if (residueFilterId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${selectedResidueName}`, 105, 42, { align: "center" }); }
-      const invoiceIssuerNotice = `NOTA FISCAL SERÁ EMITIDA PELA ${cycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`;
+      doc.text(`Período: ${new Date(`${printableCycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${printableCycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(printableCycle.bulletin_number)}`, 105, 29, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(pdfClientName.toUpperCase(), 105, 37, { align: "center" });
+      if (pdfResidueId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${pdfResidueName}`, 105, 42, { align: "center" }); }
+      const invoiceIssuerNotice = `NOTA FISCAL SERÁ EMITIDA PELA ${printableCycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`;
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
       const invoiceIssuerNoticeLines = doc.splitTextToSize(invoiceIssuerNotice, 168);
       const invoiceIssuerNoticeHeight = Math.max(11, 6 + invoiceIssuerNoticeLines.length * 4);
@@ -1043,10 +1058,10 @@ export function BillingV2Module() {
         doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 76).slice(0, 3), x + 5, companyY + 19);
       };
       let y: number;
-      if (hasThirdPartyContext) {
+      if (pdfHasThirdPartyContext) {
         drawCompanyCard(14, "Jacoby Soluções Ambientais - Gerenciadora", jacoby.trade_name || jacoby.legal_name, companyDetails(jacoby));
-        drawCompanyCard(108, "Terceirizada - Executora / Transportadora", documentThirdParty?.trade_name || documentThirdParty?.legal_name || "Não informada", companyDetails(documentThirdParty || {}));
-        y = 110;
+        drawCompanyCard(108, "Terceirizada - Executora / Transportadora", pdfDocumentThirdParty?.trade_name || pdfDocumentThirdParty?.legal_name || "Não informada", companyDetails(pdfDocumentThirdParty || {}));
+        y = companyY + 41;
       } else {
         doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 25, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 25, 3, 3, "S");
         doc.setFillColor(225, 241, 221); doc.roundedRect(14, companyY, 182, 7, 3, 3, "F");
@@ -1055,7 +1070,7 @@ export function BillingV2Module() {
         doc.setTextColor(39, 61, 45); doc.setFontSize(10); doc.text(jacoby.trade_name || jacoby.legal_name, 20, companyY + 13);
         doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
         doc.text(doc.splitTextToSize(companyDetails(jacoby) || "Dados cadastrais não informados.", 168).slice(0, 2), 20, companyY + 19);
-        y = 101;
+        y = companyY + 32;
       }
       doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 26, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 26, 3, 3, "S");
       doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(`Empresa geradora / unidade: ${pageBranch.name}`, 20, y + 8);
@@ -1067,7 +1082,7 @@ export function BillingV2Module() {
       const pageBranch = branch(id);
       if (!pageBranch) continue;
       let y = await drawHeader(pageBranch, index);
-      const branchPlacements = filteredPlacements.filter((item) => item.branch_id === id);
+      const branchPlacements = pdfPlacements.filter((item) => item.branch_id === id);
       const branchMoves = confirmedMovements.filter((item) => item.branch_id === id);
       const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
         const rate = Number(item.treatment_rate || 0);
@@ -1097,7 +1112,7 @@ export function BillingV2Module() {
           value: item.value,
         })),
         ...(index === 0
-          ? filteredServices.map((item) => ({
+          ? pdfServices.map((item) => ({
               name: services.find((entry) => entry.id === item.waste_service_id)?.name || "Serviço",
               type: "Serviço terceirizado",
               quantity: "Avulso",
@@ -1150,7 +1165,72 @@ export function BillingV2Module() {
       doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 20, 283);
       doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
     }
-    doc.save(`boletim-${bulletinNumber(cycle.bulletin_number).replace("#", "")}-${clientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
+    doc.save(`boletim-${bulletinNumber(printableCycle.bulletin_number).replace("#", "")}-${pdfClientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
+  };
+  const resultCycles = clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId);
+  const selectedResultCycles = resultCycles.filter((item) => selectedBulkCycleIds.includes(item.id));
+  const selectedEditableCycles = selectedResultCycles.filter((item) => item.status !== "closed");
+  const selectedPrintableCycles = selectedResultCycles.filter((item) => item.status === "closed");
+  const toggleBulkCycle = (id: string, checked: boolean) => {
+    setSelectedBulkCycleIds((current) => checked ? [...new Set([...current, id])] : current.filter((item) => item !== id));
+  };
+  const toggleAllResultCycles = (checked: boolean) => {
+    setSelectedBulkCycleIds(checked ? resultCycles.map((item) => item.id) : []);
+  };
+  const finalizeSelectedCycles = async () => {
+    if (!selectedEditableCycles.length) {
+      toast.message("Selecione ao menos um boletim em edição para finalizar.");
+      return;
+    }
+    if (!confirm(`Finalizar ${selectedEditableCycles.length} boletim(ns) selecionado(s)? Eles continuarão disponíveis para edição e reimpressão.`)) return;
+    setIsFinalizingBulk(true);
+    try {
+      const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .update({ status: "closed", finalized_at: new Date().toISOString() })
+        .in("id", selectedEditableCycles.map((item) => item.id));
+      if (error) throw error;
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] }),
+        qc.invalidateQueries({ queryKey: ["billing-v2-recent"] }),
+      ]);
+      toast.success(`${selectedEditableCycles.length} boletim(ns) finalizado(s).`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível finalizar os boletins selecionados.");
+    } finally {
+      setIsFinalizingBulk(false);
+    }
+  };
+  const generateSelectedPdfs = async () => {
+    if (!selectedPrintableCycles.length) {
+      toast.message("Selecione ao menos um boletim finalizado para baixar o PDF.");
+      return;
+    }
+    setIsGeneratingBulk(true);
+    let generated = 0;
+    try {
+      for (const targetCycle of selectedPrintableCycles) {
+        const [placementsResult, movementsResult, servicesResult] = await Promise.all([
+          (supabase.from("billing_v2_placements" as any) as any).select("*").eq("cycle_id", targetCycle.id).order("started_on"),
+          (supabase.from("billing_v2_movements" as any) as any).select("*").eq("cycle_id", targetCycle.id).order("occurred_on"),
+          (supabase.from("billing_v2_cycle_services" as any) as any).select("*").eq("cycle_id", targetCycle.id),
+        ]);
+        const error = placementsResult.error || movementsResult.error || servicesResult.error;
+        if (error) throw error;
+        await generatePdf({
+          targetCycle,
+          placements: (placementsResult.data || []) as Placement[],
+          movements: (movementsResult.data || []) as Movement[],
+          services: (servicesResult.data || []) as CycleService[],
+          includeResidue: "all",
+        });
+        generated += 1;
+      }
+      toast.success(`${generated} PDF(s) preparado(s) para download.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar os PDFs selecionados.");
+    } finally {
+      setIsGeneratingBulk(false);
+    }
   };
 
   return (
@@ -1173,7 +1253,7 @@ export function BillingV2Module() {
               setResidueFilterId("all");
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="min-w-0 [&>span]:min-w-0">
               <SelectValue placeholder="Selecionar cliente" />
             </SelectTrigger>
             <SelectContent>
@@ -1187,7 +1267,7 @@ export function BillingV2Module() {
         </Field>
         <Field label="Filial ou pátio do boletim">
           <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); setContinuePreviousSetup(true); }} disabled={Boolean(cycleId)}>
-            <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+            <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar" /></SelectTrigger>
             <SelectContent>
               {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
             </SelectContent>
@@ -1247,16 +1327,29 @@ export function BillingV2Module() {
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
-                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
+                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-52 truncate" title={clients.find((client) => client.id === item.client_id)?.name || "Cliente"}>{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</span></td><td className="p-2"><span className="block max-w-52 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
               </tbody></table>
             </div>
           </Card>
         <Card className="order-1 p-5">
-          <h2 className="font-semibold">Resultado da busca · {clientName}{cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Boletins encontrados para o cliente e pátio selecionados.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="truncate font-semibold" title={`${clientName}${cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}`}>Resultado da busca · {clientName}{cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Boletins encontrados para o cliente e pátio selecionados.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">{selectedResultCycles.length} selecionado(s)</span>
+              <Button variant="outline" size="sm" onClick={() => void finalizeSelectedCycles()} disabled={!selectedEditableCycles.length || isFinalizingBulk}>
+                <CheckCircle2 className="mr-2 h-4 w-4" />{isFinalizingBulk ? "Finalizando…" : "Finalizar selecionados"}
+              </Button>
+              <Button size="sm" onClick={() => void generateSelectedPdfs()} disabled={!selectedPrintableCycles.length || isGeneratingBulk}>
+                <Download className="mr-2 h-4 w-4" />{isGeneratingBulk ? "Gerando PDFs…" : "Baixar PDFs selecionados"}
+              </Button>
+            </div>
+          </div>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
-              {clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).length ? clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId).map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
+            <table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="w-10 p-2"><Checkbox aria-label="Selecionar todos os boletins encontrados" checked={resultCycles.length > 0 && resultCycles.every((item) => selectedBulkCycleIds.includes(item.id))} onCheckedChange={(checked) => toggleAllResultCycles(Boolean(checked))} /></th><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
+              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
             </tbody></table>
           </div>
         </Card>
@@ -1267,7 +1360,7 @@ export function BillingV2Module() {
             <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Cliente</p>
-                <p className="font-semibold">{clientName}</p>
+                <p className="truncate font-semibold" title={clientName}>{clientName}</p>
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Período</p>
@@ -1275,7 +1368,7 @@ export function BillingV2Module() {
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Filial ou pátio</p>
-                <p className="font-semibold">{branch(cycle?.branch_id || "")?.name || "Boletim legado"}</p>
+                <p className="truncate font-semibold" title={branch(cycle?.branch_id || "")?.name || "Boletim legado"}>{branch(cycle?.branch_id || "")?.name || "Boletim legado"}</p>
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Número do boletim</p>
