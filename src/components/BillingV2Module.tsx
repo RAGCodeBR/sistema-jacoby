@@ -98,6 +98,7 @@ type ClientServiceRate = { client_id: string; waste_service_id: string; default_
 type CycleService = {
   id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number;
   quantity: number;
+  unit_amount: number;
   observation: string | null;
   execution_date: string | null;
   invoice_issued_on: string | null;
@@ -601,12 +602,15 @@ export function BillingV2Module() {
     mutationFn: async () => {
       if (!cycleId || !selectedServiceId) throw Error("Selecione o serviço para incluir no boletim.");
       const issuerCompanyId = cycle?.issuer_type === "outsourced" ? cycle.outsourced_company_id : null;
+      const quantity = Math.max(1, Number(serviceQuantity || 1));
+      const unitAmount = Number(serviceAmount || 0);
       const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any).insert({
         cycle_id: cycleId,
         waste_service_id: selectedServiceId,
         outsourced_company_id: issuerCompanyId,
-        amount: Number(serviceAmount || 0),
-        quantity: Math.max(1, Number(serviceQuantity || 1)),
+        amount: unitAmount * quantity,
+        unit_amount: unitAmount,
+        quantity,
         observation: serviceObservation.trim() || null,
         execution_date: serviceExecutionDate || null,
       });
@@ -615,15 +619,17 @@ export function BillingV2Module() {
     onSuccess: () => { setSelectedServiceId(""); setServiceAmount("0"); setServiceQuantity("1"); setServiceObservation(""); refresh(); toast.success("Serviço incluído no boletim."); },
     onError: (error: Error) => toast.error(error.message),
   });
-  const updateCycleServiceAmount = async (id: string, amount: string) => {
+  const updateCycleServiceAmount = async (id: string, amount: string, quantity: number) => {
+    const unitAmount = Number(amount || 0);
     const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
-      .update({ amount: Number(amount || 0) })
+      .update({ unit_amount: unitAmount, amount: unitAmount * Math.max(1, Number(quantity || 1)) })
       .eq("id", id);
     if (error) toast.error(error.message); else refresh();
   };
-  const updateCycleServiceQuantity = async (id: string, quantity: string) => {
+  const updateCycleServiceQuantity = async (id: string, quantity: string, unitAmount: number) => {
+    const parsedQuantity = Math.max(1, Number(quantity || 1));
     const { error } = await (supabase.from("billing_v2_cycle_services" as any) as any)
-      .update({ quantity: Math.max(1, Number(quantity || 1)) })
+      .update({ quantity: parsedQuantity, amount: parsedQuantity * Number(unitAmount || 0) })
       .eq("id", id);
     if (error) toast.error(error.message); else refresh();
   };
@@ -1845,7 +1851,7 @@ export function BillingV2Module() {
                     <p className="mt-1 font-semibold">Emitido por {cycle?.issuer_type === "outsourced" ? issuerCompany?.trade_name || issuerCompany?.legal_name || "empresa terceirizada" : "Jacoby Soluções Ambientais"}</p>
                   </div>
                 </div>
-                <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(220px,1fr)_130px_130px_170px_auto]">
+                <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(220px,1fr)_110px_130px_150px_170px_auto]">
                   <Field label="Incluir serviço no boletim">
                     <Select value={selectedServiceId} onValueChange={(serviceId) => {
                       setSelectedServiceId(serviceId);
@@ -1860,8 +1866,11 @@ export function BillingV2Module() {
                   <Field label="Quantidade">
                     <Input type="number" min="1" step="1" value={serviceQuantity} onChange={(event) => setServiceQuantity(event.target.value)} />
                   </Field>
-                  <Field label="Valor total aplicado">
+                  <Field label="Valor unitário">
                     <Input type="number" min="0" step="0.01" value={serviceAmount} onChange={(event) => setServiceAmount(event.target.value)} />
+                  </Field>
+                  <Field label="Total calculado">
+                    <Input value={money(Number(serviceAmount || 0) * Math.max(1, Number(serviceQuantity || 1)))} disabled />
                   </Field>
                   <Field label="Data de execução">
                     <Input type="date" value={serviceExecutionDate} onChange={(event) => setServiceExecutionDate(event.target.value)} />
@@ -1871,7 +1880,7 @@ export function BillingV2Module() {
                 <Field label="Observação" className="mt-3">
                   <Input value={serviceObservation} onChange={(event) => setServiceObservation(event.target.value)} placeholder="Opcional: detalhe deste lançamento" />
                 </Field>
-                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1420px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">PDF de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-32" type="number" min="0" step="0.01" defaultValue={Number(item.amount || 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir PDF"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "PDF anexado"}</span></Button>}<label className="inline-flex"><input className="sr-only" type="file" accept="application/pdf,.pdf" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar PDF" : "Anexar PDF"}</span></Button></label></div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
+                {cycleServices.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1500px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Serviço</th><th className="p-2">Executora</th><th className="p-2">Quantidade</th><th className="p-2">Valor unitário</th><th className="p-2">Total</th><th className="p-2">Observação</th><th className="p-2">Data de execução</th><th className="p-2">Data de faturamento</th><th className="p-2">Data de pagamento</th><th className="p-2">PDF de faturamento</th><th className="p-2" /></tr></thead><tbody>{cycleServices.map((item) => <tr key={item.id} className="border-b"><td className="p-2">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço"}</td><td className="p-2">{outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.trade_name || outsourcedCompanies.find((company) => company.id === item.outsourced_company_id)?.legal_name || ""}</td><td className="p-2"><Input className="h-8 w-20" type="number" min="1" step="1" defaultValue={Number(item.quantity || 1)} onBlur={(event) => void updateCycleServiceQuantity(item.id, event.target.value, Number(item.unit_amount ?? item.amount ?? 0))} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.01" defaultValue={Number(item.unit_amount ?? item.amount ?? 0)} onBlur={(event) => void updateCycleServiceAmount(item.id, event.target.value, Number(item.quantity || 1))} /></td><td className="p-2 font-medium">{money(Number(item.amount || 0))}</td><td className="p-2"><Input className="h-8 w-48" defaultValue={item.observation || ""} onBlur={(event) => void updateCycleServiceObservation(item.id, event.target.value)} placeholder="Opcional" /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.execution_date || ""} onBlur={(event) => void updateCycleServiceExecutionDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.invoice_issued_on || ""} onBlur={(event) => void updateCycleServiceBillingDate(item.id, event.target.value)} /></td><td className="p-2"><Input className="h-8 w-36" type="date" defaultValue={item.received_on || ""} onBlur={(event) => void updateCycleServicePaymentDate(item.id, event.target.value)} /></td><td className="p-2"><div className="flex min-w-44 flex-col items-start gap-1">{item.invoice_pdf_path && <Button variant="link" size="sm" className="h-auto max-w-44 justify-start p-0 text-left" title={item.invoice_pdf_name || "Abrir PDF"} onClick={() => void openCycleServiceInvoicePdf(item)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{item.invoice_pdf_name || "PDF anexado"}</span></Button>}<label className="inline-flex"><input className="sr-only" type="file" accept="application/pdf,.pdf" onChange={(event) => { void uploadCycleServiceInvoicePdf(item, event.target.files?.[0]); event.currentTarget.value = ""; }} /><Button asChild variant="outline" size="sm"><span><Upload className="mr-1 h-3.5 w-3.5" />{item.invoice_pdf_path ? "Trocar PDF" : "Anexar PDF"}</span></Button></label></div></td><td className="p-2"><Button variant="ghost" size="icon" onClick={() => void remove("billing_v2_cycle_services", item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></td></tr>)}</tbody></table></div>}
               </Card>
               <Card className="p-4">
                 <h2 className="font-semibold">Valores aplicados</h2>
@@ -2287,7 +2296,7 @@ function Boletim({
             <tr key={item.id} className="border-b">
               <td className="py-2"><p>{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço terceirizado"}</p>{item.observation && <p className="mt-0.5 text-xs text-muted-foreground">{item.observation}</p>}</td>
               <td className="py-2">{number(Number(item.quantity || 1))}</td>
-              <td className="py-2">Conforme lançamento</td>
+              <td className="py-2">{money(Number(item.unit_amount ?? item.amount ?? 0))}</td>
               <td className="py-2 text-right">{money(Number(item.amount || 0))}</td>
             </tr>
           ))}
