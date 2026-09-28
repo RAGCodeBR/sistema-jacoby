@@ -1967,7 +1967,7 @@ function PlacementTable({
 }) {
   return (
     <Card className="overflow-x-auto p-4">
-      <table className="w-full min-w-[760px] text-sm">
+      <table className="w-full min-w-[920px] text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
             <th className="p-2">Início</th>
@@ -1976,6 +1976,7 @@ function PlacementTable({
             <th className="p-2">Equipamento colocado / troca</th>
             <th className="p-2">Resíduo</th>
             <th className="p-2">Quantidade</th>
+            <th className="p-2">Observação</th>
             <th className="p-2">Valor da locação</th>
             <th className="p-2" />
           </tr>
@@ -1997,6 +1998,7 @@ function PlacementTable({
                   {residues.find((item) => item.id === row.waste_residue_id)?.name || "—"}
                 </td>
                 <td className="p-2">{number(Number(row.quantity))}</td>
+                <td className="max-w-72 whitespace-pre-wrap p-2 text-muted-foreground">{row.observation || "—"}</td>
                 <td className="p-2">{money(Number(row.monthly_rental_rate))}</td>
                 <td className="p-2">
                   <Button variant="ghost" size="icon" onClick={() => onDelete(row.id)}>
@@ -2007,7 +2009,7 @@ function PlacementTable({
             ))
           ) : (
             <tr>
-              <td className="p-5 text-center text-muted-foreground" colSpan={7}>
+              <td className="p-5 text-center text-muted-foreground" colSpan={9}>
                 Nenhum equipamento em locação neste boletim.
               </td>
             </tr>
