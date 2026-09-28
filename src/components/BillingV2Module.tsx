@@ -1053,14 +1053,14 @@ export function BillingV2Module() {
     };
     const drawHeader = async (pageBranch: Branch, pageIndex: number) => {
       if (pageIndex) doc.addPage();
-      doc.setFillColor(62, 122, 79); doc.rect(0, 0, 210, 46, "F");
-      doc.setFillColor(250, 253, 249); doc.roundedRect(12, 6, 40, 28, 3, 3, "F");
-      doc.setDrawColor(210, 229, 205); doc.setLineWidth(0.35); doc.roundedRect(12, 6, 40, 28, 3, 3, "S");
-      await drawLogo(jacoby.logo_url, 15, 9, 34, 21, true);
+      doc.setFillColor(62, 122, 79); doc.rect(0, 0, 210, 42, "F");
+      doc.setFillColor(250, 253, 249); doc.roundedRect(12, 5, 40, 26, 3, 3, "F");
+      doc.setDrawColor(210, 229, 205); doc.setLineWidth(0.35); doc.roundedRect(12, 5, 40, 26, 3, 3, "S");
+      await drawLogo(jacoby.logo_url, 15, 7, 34, 21, true);
       if (pdfDocumentThirdParty?.logo_url) {
-        doc.setFillColor(250, 253, 249); doc.roundedRect(158, 6, 40, 28, 3, 3, "F");
-        doc.setDrawColor(210, 229, 205); doc.roundedRect(158, 6, 40, 28, 3, 3, "S");
-        await drawLogo(pdfDocumentThirdParty.logo_url, 161, 9, 34, 21);
+        doc.setFillColor(250, 253, 249); doc.roundedRect(158, 5, 40, 26, 3, 3, "F");
+        doc.setDrawColor(210, 229, 205); doc.roundedRect(158, 5, 40, 26, 3, 3, "S");
+        await drawLogo(pdfDocumentThirdParty.logo_url, 161, 7, 34, 21);
       }
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
@@ -1076,42 +1076,43 @@ export function BillingV2Module() {
         while (abbreviated.length && doc.getTextWidth(`${abbreviated}${ellipsis}`) > clientHeaderMaxWidth) abbreviated = abbreviated.slice(0, -1);
         return `${abbreviated.trimEnd()}${ellipsis}`;
       })();
-      doc.text(clientHeaderName, 105, 37, { align: "center" });
-      if (pdfResidueId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${pdfResidueName}`, 105, 42, { align: "center" }); }
+      doc.text(clientHeaderName, 105, 36, { align: "center" });
+      if (pdfResidueId !== "all") { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(`Resíduo: ${pdfResidueName}`, 105, 40, { align: "center" }); }
       const invoiceIssuerNotice = `NOTA FISCAL SERÁ EMITIDA PELA ${printableCycle.issuer_type === "outsourced" ? `TERCEIRIZADA ${issuerName.toUpperCase()}` : "JACOBY SOLUÇÕES AMBIENTAIS"}`;
       doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
       const invoiceIssuerNoticeLines = doc.splitTextToSize(invoiceIssuerNotice, 168);
       const invoiceIssuerNoticeHeight = Math.max(11, 6 + invoiceIssuerNoticeLines.length * 4);
-      doc.setFillColor(236, 246, 228); doc.roundedRect(14, 51, 182, invoiceIssuerNoticeHeight, 2, 2, "F");
-      const invoiceIssuerNoticeY = 51 + (invoiceIssuerNoticeHeight - (invoiceIssuerNoticeLines.length - 1) * 4) / 2 + 1.2;
+      const noticeY = 46;
+      doc.setFillColor(236, 246, 228); doc.roundedRect(14, noticeY, 182, invoiceIssuerNoticeHeight, 2, 2, "F");
+      const invoiceIssuerNoticeY = noticeY + (invoiceIssuerNoticeHeight - (invoiceIssuerNoticeLines.length - 1) * 4) / 2 + 1.2;
       doc.text(invoiceIssuerNoticeLines, 105, invoiceIssuerNoticeY, { align: "center", lineHeightFactor: 1.1 });
-      const companyY = 51 + invoiceIssuerNoticeHeight + 7;
+      const companyY = noticeY + invoiceIssuerNoticeHeight + 5;
       const drawCompanyCard = (x: number, role: string, name: string, details: string) => {
-        doc.setFillColor(247, 250, 246); doc.roundedRect(x, companyY, 88, 34, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(x, companyY, 88, 34, 3, 3, "S");
-        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.text(role.toUpperCase(), x + 5, companyY + 7);
-        doc.setTextColor(39, 61, 45); doc.setFontSize(9); doc.text(doc.splitTextToSize(name, 76)[0], x + 5, companyY + 13);
-        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 76).slice(0, 3), x + 5, companyY + 19);
+        doc.setFillColor(247, 250, 246); doc.roundedRect(x, companyY, 88, 27, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(x, companyY, 88, 27, 3, 3, "S");
+        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(7.2); doc.text(role.toUpperCase(), x + 5, companyY + 6);
+        doc.setTextColor(39, 61, 45); doc.setFontSize(8.5); doc.text(doc.splitTextToSize(name, 76)[0], x + 5, companyY + 12);
+        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(6.2); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 76).slice(0, 3), x + 5, companyY + 17);
       };
       let y: number;
       if (pdfHasThirdPartyContext) {
         drawCompanyCard(14, "Jacoby Soluções Ambientais - Gerenciadora", jacoby.trade_name || jacoby.legal_name, companyDetails(jacoby));
         drawCompanyCard(108, "Terceirizada - Executora / Transportadora", pdfDocumentThirdParty?.trade_name || pdfDocumentThirdParty?.legal_name || "Não informada", companyDetails(pdfDocumentThirdParty || {}));
-        y = companyY + 41;
+        y = companyY + 32;
       } else {
-        doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 25, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 25, 3, 3, "S");
+        doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 21, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 21, 3, 3, "S");
         doc.setFillColor(225, 241, 221); doc.roundedRect(14, companyY, 182, 7, 3, 3, "F");
         doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
         doc.text("JACOBY SOLUÇÕES AMBIENTAIS · GERENCIADORA DO BOLETIM", 20, companyY + 5);
         doc.setTextColor(39, 61, 45); doc.setFontSize(10); doc.text(jacoby.trade_name || jacoby.legal_name, 20, companyY + 13);
         doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
         doc.text(doc.splitTextToSize(companyDetails(jacoby) || "Dados cadastrais não informados.", 168).slice(0, 2), 20, companyY + 19);
-        y = companyY + 32;
+        y = companyY + 27;
       }
-      doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 26, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 26, 3, 3, "S");
-      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(`Empresa geradora / unidade: ${pageBranch.name}`, 20, y + 8);
+      doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 20, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 20, 3, 3, "S");
+      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Empresa geradora / unidade: ${pageBranch.name}`, 20, y + 7);
       const details = [pageBranch.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch.address].filter(Boolean).join(" · ");
-      doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 168), 20, y + 15);
-      return y + 34;
+      doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 168).slice(0, 2), 20, y + 13);
+      return y + 26;
     };
     for (const [index, id] of branchIds.entries()) {
       const pageBranch = branch(id);
@@ -1207,7 +1208,13 @@ export function BillingV2Module() {
         const observationHeight = 8 + observationLines.length * 3.6;
         if (y + observationHeight + 30 > 272) {
           doc.addPage();
-          y = await drawHeader(pageBranch, 0);
+          y = 18;
+          doc.setFillColor(244, 248, 242);
+          doc.roundedRect(14, 10, 182, 8, 2, 2, "F");
+          doc.setTextColor(35, 96, 58);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.text(`CONTINUAÇÃO · BOLETIM ${bulletinNumber(printableCycle.bulletin_number)} · OBSERVAÇÕES E TOTAL`, 20, 15.5);
         }
         doc.setFillColor(255, 248, 225);
         doc.setDrawColor(224, 184, 72);
