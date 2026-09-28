@@ -729,6 +729,23 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const updatePlacement = async (id: string, values: { started_on: string; quantity: string; observation: string }) => {
+    const quantity = Number(values.quantity);
+    if (!values.started_on || !Number.isFinite(quantity) || quantity < 1) {
+      toast.error("Informe uma data e uma quantidade válida.");
+      return;
+    }
+    const { error } = await (supabase.from("billing_v2_placements" as any) as any)
+      .update({
+        started_on: values.started_on,
+        quantity,
+        observation: values.observation.trim() || null,
+      })
+      .eq("id", id);
+    if (error) throw error;
+    refresh();
+    toast.success("Locação atualizada.");
+  };
   const addMovement = useMutation({
     mutationFn: async () => {
       if (savingMovementRef.current) return;
@@ -1543,7 +1560,7 @@ export function BillingV2Module() {
                         setRentalBranchFilter(value);
                       }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="min-w-0 [&>span]:truncate">
                         <SelectValue placeholder="Selecionar" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1643,6 +1660,7 @@ export function BillingV2Module() {
                 equipment={equipment}
                 residues={residues}
                 onDelete={(id) => void remove("billing_v2_placements", id)}
+                onSave={updatePlacement}
                 />
               </div>
             </TabsContent>
@@ -1958,16 +1976,38 @@ function PlacementTable({
   equipment,
   residues,
   onDelete,
+  onSave,
 }: {
   rows: Placement[];
   branches: Branch[];
   equipment: Equipment[];
   residues: Residue[];
   onDelete: (id: string) => void;
+  onSave: (id: string, values: { started_on: string; quantity: string; observation: string }) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState<Placement | null>(null);
+  const [draft, setDraft] = useState({ started_on: "", quantity: "1", observation: "" });
+  const [saving, setSaving] = useState(false);
+  const openEditor = (row: Placement) => {
+    setEditing(row);
+    setDraft({ started_on: row.started_on, quantity: String(row.quantity), observation: row.observation || "" });
+  };
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await onSave(editing.id, draft);
+      setEditing(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar a locação.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
+    <>
     <Card className="overflow-x-auto p-4">
-      <table className="w-full min-w-[920px] text-sm">
+      <table className="w-full min-w-[980px] text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
             <th className="p-2">Início</th>
@@ -2002,9 +2042,14 @@ function PlacementTable({
                 <td className="max-w-72 whitespace-pre-wrap p-2 text-muted-foreground">{row.observation || "—"}</td>
                 <td className="p-2">{money(Number(row.monthly_rental_rate))}</td>
                 <td className="p-2">
-                  <Button variant="ghost" size="icon" onClick={() => onDelete(row.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" aria-label="Editar locação" onClick={() => openEditor(row)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" aria-label="Excluir locação" onClick={() => onDelete(row.id)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))
@@ -2018,6 +2063,18 @@ function PlacementTable({
         </tbody>
       </table>
     </Card>
+    <Dialog open={Boolean(editing)} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Editar locação</DialogTitle></DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Início"><Input type="date" value={draft.started_on} onChange={(event) => setDraft({ ...draft, started_on: event.target.value })} /></Field>
+          <Field label="Quantidade"><Input type="number" min="1" step="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} /></Field>
+          <Field label="Observação" className="sm:col-span-2"><Input value={draft.observation} onChange={(event) => setDraft({ ...draft, observation: event.target.value })} placeholder="Opcional" /></Field>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button><Button onClick={() => void save()} disabled={saving}>{saving ? "Salvando..." : "Salvar alterações"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 function MovementTable({
