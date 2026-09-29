@@ -1580,7 +1580,7 @@ export function BillingV2Module() {
                         setPlacementForm({ ...placementForm, equipmentId: value })
                       }
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="min-w-0 [&>span]:truncate">
                         <SelectValue placeholder="Selecionar" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1684,7 +1684,7 @@ export function BillingV2Module() {
                         setIncomingEquipmentIds([]);
                       }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="min-w-0 [&>span]:truncate">
                         <SelectValue placeholder="Selecionar" />
                       </SelectTrigger>
                       <SelectContent>
