@@ -3286,11 +3286,11 @@ function ResidueBranchConfig({
   const currentRows = form.branchId
     ? residues.filter((residue) => residue.active && residue.branch_id === form.branchId)
     : residues.filter((residue) => residue.active && !residue.branch_id);
-  const configuredNames = new Set(currentRows.map((residue) => residue.name.trim().toLocaleLowerCase()));
+  const configuredNames = new Set(currentRows.map((residue) => optionKey(residue.name)));
   const inheritedRows = form.branchId
     ? residues.filter(
         (residue) =>
-          residue.active && !residue.branch_id && !configuredNames.has(residue.name.trim().toLocaleLowerCase()),
+          residue.active && !residue.branch_id && !configuredNames.has(optionKey(residue.name)),
       )
     : [];
   const knownResidueNames = Array.from(new Set(residues.filter((residue) => residue.active).map((residue) => residue.name))).sort();
@@ -3343,6 +3343,38 @@ function ResidueBranchConfig({
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const defineInheritedResidue = useMutation({
+    mutationFn: async (residue: Residue) => {
+      if (!form.branchId) throw Error("Escolha a filial ou pátio antes de definir o valor.");
+      const existing = residues.find(
+        (item) =>
+          item.client_id === clientId &&
+          item.branch_id === form.branchId &&
+          optionKey(item.name) === optionKey(residue.name),
+      );
+      const payload = {
+        client_id: clientId,
+        branch_id: form.branchId,
+        name: residue.name,
+        waste_class: residue.waste_class,
+        unit: residue.unit,
+        default_rental_rate: Number(residue.default_rental_rate || 0),
+        default_exchange_rate: Number(residue.default_exchange_rate || 0),
+        default_treatment_rate: Number(residue.default_treatment_rate || 0),
+        active: true,
+      };
+      const request = supabase.from("waste_residues" as any) as any;
+      const { error } = existing
+        ? await request.update(payload).eq("id", existing.id)
+        : await request.insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      onSaved();
+      toast.success("Valor padrão aplicado a este pátio. Use Editar para alterar o valor.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   return (
     <>
       <Card className="p-4">
@@ -3378,7 +3410,7 @@ function ResidueBranchConfig({
             residue.name,
             "Valor padrão",
             money(residue.default_treatment_rate),
-            <Button key={residue.id} variant="outline" size="sm" onClick={() => setForm({ id: "", branchId: form.branchId, name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}>Definir para este pátio</Button>,
+            <Button key={residue.id} variant="outline" size="sm" disabled={defineInheritedResidue.isPending} onClick={() => defineInheritedResidue.mutate(residue)}>Definir para este pátio</Button>,
           ]),
         ]}
       />
