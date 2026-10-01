@@ -321,6 +321,9 @@ export function BillingV2Module() {
       return (data || []) as Cycle[];
     },
   });
+  const branchesQuery = query<Branch>(["billing-v2-branches", clientId], "client_branches", (q) =>
+    q.select("id,name,cnpj,address").eq("client_id", clientId).eq("is_active", true).order("name"),
+  );
   const previousClosedCycleQuery = useQuery({
     queryKey: ["billing-v2-previous-closed", clientId, cycleBranchId],
     enabled: Boolean(clientId && !cycleId && (cycleBranchId || !branchesQuery.isLoading && !(branchesQuery.data || []).length)),
@@ -337,9 +340,6 @@ export function BillingV2Module() {
       return data as Cycle | null;
     },
   });
-  const branchesQuery = query<Branch>(["billing-v2-branches", clientId], "client_branches", (q) =>
-    q.select("id,name,cnpj,address").eq("client_id", clientId).eq("is_active", true).order("name"),
-  );
   // A lista de recentes pode conter boletins de outro cliente. Carregamos as
   // filiais ativas uma única vez para não trocar o nome do pátio por um rótulo
   // genérico só porque outro cliente está selecionado no filtro.
