@@ -1140,6 +1140,7 @@ export function BillingV2Module() {
     const pdfResidueId = options?.includeResidue ?? residueFilterId;
     const printableBulletinNumber = options?.bulletinLabel || bulletinNumber(printableCycle?.bulletin_number);
     const pdfClientName = clients.find((item) => item.id === printableCycle?.client_id)?.name || clientName;
+    const pdfClient = clients.find((item) => item.id === printableCycle?.client_id);
     const pdfResidueName = pdfResidueId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === pdfResidueId)?.name || "Resíduo selecionado";
     const pdfIssuerCompany = outsourcedCompanies.find((company) => company.id === printableCycle?.outsourced_company_id);
     const pdfDocumentThirdParty = pdfIssuerCompany || outsourcedCompanies.find((company) =>
@@ -1224,10 +1225,18 @@ export function BillingV2Module() {
         doc.text(doc.splitTextToSize(companyDetails(jacoby) || "Dados cadastrais não informados.", 168).slice(0, 2), 20, companyY + 19);
         y = companyY + 27;
       }
+      const generatorName = pageBranch?.name || pdfClient?.trade_name || pdfClient?.legal_name || `${pdfClientName} (Matriz)`;
+      const generatorDetails = pageBranch
+        ? [pageBranch.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch.address].filter(Boolean).join(" · ")
+        : [
+            pdfClient?.cnpj && `CNPJ: ${pdfClient.cnpj}`,
+            pdfClient?.address,
+            pdfClient?.phone && `Fone: ${pdfClient.phone}`,
+            pdfClient?.email,
+          ].filter(Boolean).join(" · ");
       doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 20, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 20, 3, 3, "S");
-      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Empresa geradora / unidade: ${pageBranch?.name || `${pdfClientName} (Matriz)`}`, 20, y + 7);
-      const details = [pageBranch?.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch?.address].filter(Boolean).join(" · ");
-      doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 168).slice(0, 2), 20, y + 13);
+      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Empresa geradora / unidade: ${generatorName}`, 20, y + 7);
+      doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2); doc.text(doc.splitTextToSize(generatorDetails || "Dados cadastrais não informados.", 168).slice(0, 2), 20, y + 13);
       return y + 26;
     };
     const printableBranchIds = branchIds.length ? branchIds : ["__matriz__"];
