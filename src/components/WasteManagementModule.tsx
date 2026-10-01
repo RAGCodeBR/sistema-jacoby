@@ -3531,7 +3531,7 @@ function CommissionSettingsPanel({
     <Card className="p-4">
       <h2 className="font-semibold">Comissionamento de terceirizadas</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        A comissão é calculada sobre a parcela da Jacoby. Locação e troca usam percentual sobre o valor do BM; no tratamento, informe o valor/kg da terceirizada e a parcela/kg da Jacoby.
+        Na locação e na troca, o abatimento é aplicado ao valor do BM antes do percentual da Jacoby. No tratamento, o abatimento incide somente sobre a parcela/kg da Jacoby.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Field label="Empresa terceirizada">
@@ -3540,7 +3540,7 @@ function CommissionSettingsPanel({
             <SelectContent>{companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
-        <Field label="Abatimento / imposto (%)"><Input type="number" min="0" max="100" step="0.01" value={form.tax} onChange={(event) => setForm({ ...form, tax: event.target.value })} /></Field>
+        <Field label="Abatimento antes da comissão (%)"><Input type="number" min="0" max="100" step="0.01" value={form.tax} onChange={(event) => setForm({ ...form, tax: event.target.value })} /></Field>
         <Field label="Comissão de locação (%)"><Input type="number" min="0" max="100" step="0.01" value={form.rental} onChange={(event) => setForm({ ...form, rental: event.target.value })} /></Field>
         <Field label="Comissão de troca (%)"><Input type="number" min="0" max="100" step="0.01" value={form.exchange} onChange={(event) => setForm({ ...form, exchange: event.target.value })} /></Field>
         <Button className="self-end" onClick={() => void saveSettings()}>Salvar regra</Button>
