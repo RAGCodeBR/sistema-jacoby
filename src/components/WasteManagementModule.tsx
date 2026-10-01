@@ -1922,6 +1922,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               />
             </TabsContent>
             <TabsContent value="servicos" className="space-y-4">
+              <ServiceRateOverridesPanel
+                clientId={clientId}
+                services={serviceCatalog}
+                companies={outsourcedCompanies}
+                branches={branches.filter((branch) => branch.is_active)}
+              />
               <Card className="p-4">
                 <h2 className="font-semibold">
                   {editingService ? "Editar serviço" : "Novo serviço"}
@@ -1974,12 +1980,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   </div>
                 </div>
               </Card>
-              <ServiceRateOverridesPanel
-                clientId={clientId}
-                services={serviceCatalog}
-                companies={outsourcedCompanies}
-                branches={branches.filter((branch) => branch.is_active)}
-              />
               <ActionTable
                 headers={["Serviço", "Empresa terceirizada", "Valor para este cliente", "Ações"]}
                 rows={serviceCatalog.map((service) => [
