@@ -316,16 +316,16 @@ export function BillingV2Module() {
   });
   const previousClosedCycleQuery = useQuery({
     queryKey: ["billing-v2-previous-closed", clientId, cycleBranchId],
-    enabled: Boolean(clientId && cycleBranchId && !cycleId),
+    enabled: Boolean(clientId && !cycleId && (cycleBranchId || !branchesQuery.isLoading && !(branchesQuery.data || []).length)),
     queryFn: async () => {
-      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
+      let request = (supabase.from("billing_v2_cycles" as any) as any)
         .select("*")
         .eq("client_id", clientId)
-        .eq("branch_id", cycleBranchId)
         .eq("status", "closed")
         .order("finalized_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      request = cycleBranchId ? request.eq("branch_id", cycleBranchId) : request.is("branch_id", null);
+      const { data, error } = await request.maybeSingle();
       if (error) throw error;
       return data as Cycle | null;
     },
@@ -485,6 +485,7 @@ export function BillingV2Module() {
     previousClosedPlacements = previousClosedPlacementsQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
   const activeResidues = residues.filter((item) => item.active);
+  const clientHasNoBranches = Boolean(clientId && !branchesQuery.isLoading && !branches.length);
   const services = useMemo(() => {
     const outsourcedCatalog = outsourcedCompanyServices
       .map((link) => link.waste_services)
@@ -546,13 +547,13 @@ export function BillingV2Module() {
       if (!clientId) throw Error("Selecione um cliente.");
       if (!periodStart || !periodEnd || periodEnd < periodStart)
         throw Error("Informe um intervalo de datas válido para o boletim.");
-      if (!cycleBranchId) throw Error("Selecione a filial ou pátio deste boletim.");
+      if (branches.length && !cycleBranchId) throw Error("Selecione a filial ou pátio deste boletim.");
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
-        .insert({ client_id: clientId, branch_id: cycleBranchId, period_start: periodStart, period_end: periodEnd })
+        .insert({ client_id: clientId, branch_id: cycleBranchId || null, period_start: periodStart, period_end: periodEnd })
         .select("id")
         .single();
       if (error) throw error;
-      if (continuePreviousSetup && previousClosedCycle) {
+      if (continuePreviousSetup && previousClosedCycle && cycleBranchId) {
         const { data: sourcePlacements, error: sourceError } = await (supabase.from("billing_v2_placements" as any) as any)
           .select("equipment_id,waste_residue_id,quantity,observation")
           .eq("cycle_id", previousClosedCycle.id)
@@ -1076,7 +1077,7 @@ export function BillingV2Module() {
   const clientName = clients.find((item) => item.id === clientId)?.name || "Cliente";
   const branch = (id: string) =>
     branches.find((item) => item.id === id) || recentBranches.find((item) => item.id === id);
-  const branchName = (id?: string | null) => branch(id || "")?.name || "Pátio não informado";
+  const branchName = (id?: string | null) => branch(id || "")?.name || "Matriz (sem filial/pátio)";
   const clientCycles = cyclesQuery.data || [];
   const residueEmissions = residueEmissionsQuery.data || [];
   const recentCycles = recentCyclesQuery.data || [];
@@ -1118,8 +1119,8 @@ export function BillingV2Module() {
     const confirmedMovements = pdfMovements.filter((item) => item.confirmed);
     const branchIds = Array.from(new Set([...pdfPlacements, ...confirmedMovements].map((item) => item.branch_id).filter(Boolean)));
     if (!branchIds.length && printableCycle?.branch_id) branchIds.push(printableCycle.branch_id);
-    if (!printableCycle || !branchIds.length) {
-      toast.error("Registre uma locação ou movimentação antes de gerar o PDF.");
+    if (!printableCycle || (!branchIds.length && !pdfServices.length)) {
+      toast.error("Registre uma locação, movimentação ou serviço antes de gerar o PDF.");
       return;
     }
     const { jsPDF } = await import("jspdf");
@@ -1136,7 +1137,7 @@ export function BillingV2Module() {
         else if (fallback) { const image = new Image(); image.src = jacobyLogo; await image.decode(); doc.addImage(image, "PNG", x, y, w, h); }
       } catch {}
     };
-    const drawHeader = async (pageBranch: Branch, pageIndex: number) => {
+    const drawHeader = async (pageBranch: Branch | null, pageIndex: number) => {
       if (pageIndex) doc.addPage();
       doc.setFillColor(62, 122, 79); doc.rect(0, 0, 210, 42, "F");
       doc.setFillColor(250, 253, 249); doc.roundedRect(12, 5, 40, 26, 3, 3, "F");
@@ -1194,17 +1195,17 @@ export function BillingV2Module() {
         y = companyY + 27;
       }
       doc.setFillColor(244, 248, 242); doc.roundedRect(14, y, 182, 20, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, y, 182, 20, 3, 3, "S");
-      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Empresa geradora / unidade: ${pageBranch.name}`, 20, y + 7);
-      const details = [pageBranch.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch.address].filter(Boolean).join(" · ");
+      doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Empresa geradora / unidade: ${pageBranch?.name || `${pdfClientName} (Matriz)`}`, 20, y + 7);
+      const details = [pageBranch?.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch?.address].filter(Boolean).join(" · ");
       doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 168).slice(0, 2), 20, y + 13);
       return y + 26;
     };
-    for (const [index, id] of branchIds.entries()) {
-      const pageBranch = branch(id);
-      if (!pageBranch) continue;
+    const printableBranchIds = branchIds.length ? branchIds : ["__matriz__"];
+    for (const [index, id] of printableBranchIds.entries()) {
+      const pageBranch = id === "__matriz__" ? null : branch(id);
       let y = await drawHeader(pageBranch, index);
-      const branchPlacements = pdfPlacements.filter((item) => item.branch_id === id);
-      const branchMoves = confirmedMovements.filter((item) => item.branch_id === id);
+      const branchPlacements = id === "__matriz__" ? [] : pdfPlacements.filter((item) => item.branch_id === id);
+      const branchMoves = id === "__matriz__" ? [] : confirmedMovements.filter((item) => item.branch_id === id);
       const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
         const rate = Number(item.treatment_rate || 0);
         const key = `${item.waste_residue_id || "sem-residuo"}:${rate}`;
@@ -1486,12 +1487,12 @@ export function BillingV2Module() {
           </Select>
         </Field>
         <Field label="Filial ou pátio do boletim">
-          <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); setContinuePreviousSetup(true); }} disabled={Boolean(cycleId)}>
+          {clientHasNoBranches ? <Input value="Matriz — sem filial/pátio cadastrada" disabled /> : <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); setContinuePreviousSetup(true); }} disabled={Boolean(cycleId)}>
             <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar" /></SelectTrigger>
             <SelectContent>
               {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
             </SelectContent>
-          </Select>
+          </Select>}
         </Field>
         <Field label="Início do boletim">
           <Input
@@ -1505,9 +1506,9 @@ export function BillingV2Module() {
         <Field label="Fim do boletim">
           <Input type="date" value={periodEnd} min={periodStart} onChange={(event) => setPeriodEnd(event.target.value)} />
         </Field>
-        {!cycleId && cycleBranchId && (
+        {!cycleId && (cycleBranchId || clientHasNoBranches) && (
           <div className="md:col-span-4 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-            {previousClosedCycleQuery.isLoading ? (
+            {clientHasNoBranches ? <p className="text-muted-foreground">Este cliente não possui filial ou pátio. O boletim será aberto em nome da matriz e poderá receber serviços normalmente.</p> : previousClosedCycleQuery.isLoading ? (
               <p className="text-muted-foreground">Consultando o último boletim fechado deste pátio…</p>
             ) : previousClosedCycle ? (
               <>
