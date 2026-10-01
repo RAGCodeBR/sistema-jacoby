@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   ClipboardCheck,
   HandCoins,
+  NotebookPen,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AssignmentPopup } from "@/components/AssignmentPopup";
@@ -71,6 +72,7 @@ const allNav: readonly NavItem[] = [
   { to: "/terceirizados", label: "Terceirizados", icon: Factory, permission: "outsourced" },
   { to: "/reports", label: "Relatórios", icon: BarChart3, permission: "reports" },
   { to: "/portal/documentos", label: "Documentos", icon: FileText, permission: "documents" },
+  { to: "/notes", label: "Atas e anotações", icon: NotebookPen, permission: "documents" },
   { to: "/arquivos", label: "Arquivos", icon: FolderOpen, adminOnly: true, ownerOnly: true },
   { to: "/portal", label: "Portal do Cliente", icon: PanelsTopLeft },
   { to: "/portal/residuos", label: "Faturamento", icon: Recycle, permission: "billing", tab: "faturamento2" },

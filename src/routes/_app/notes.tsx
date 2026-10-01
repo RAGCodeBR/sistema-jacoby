@@ -269,7 +269,8 @@ function openNotePrintPreview({
 
 
 function NotesPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const canEditNotes = isAdmin || hasPermission("notes");
   const { data: clients = [] } = useClients();
 
   const [clientId, setClientId] = useState<string | null>(null);
@@ -413,9 +414,9 @@ function NotesPage() {
                 {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button onClick={addNote} disabled={!clientId}>
+            {canEditNotes && <Button onClick={addNote} disabled={!clientId}>
               <Plus className="mr-1 h-4 w-4" /> Nova anotação
-            </Button>
+            </Button>}
           </div>
         </div>
       </header>
@@ -456,7 +457,7 @@ function NotesPage() {
                 {filteredNotes.map((n, i) => {
                   return (
                     <li key={n.id} className="flex items-stretch gap-1">
-                      {sortMode === "manual" && (
+                      {canEditNotes && sortMode === "manual" && (
                         <div className="flex flex-col justify-center">
                           <Button
                             size="icon" variant="ghost" className="h-5 w-5"
@@ -509,13 +510,13 @@ function NotesPage() {
         {/* Editor */}
         <section className="min-h-0 overflow-y-auto p-4">
           {selected ? (
-            <NoteEditor
+            canEditNotes ? <NoteEditor
               key={selected.id}
               note={selected}
               onPatch={(p) => patchNote(selected.id, p)}
               onSave={(p) => persistNote(selected.id, p)}
               onDelete={() => deleteNote(selected.id)}
-            />
+            /> : <ReadOnlyNote note={selected} />
           ) : (
             <Card className="grid h-full place-items-center p-10 text-center text-sm text-muted-foreground">
               Selecione ou crie uma anotação.
@@ -525,6 +526,27 @@ function NotesPage() {
       </div>
     </div>
   );
+}
+
+function ReadOnlyNote({ note }: { note: ClientNote }) {
+  const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const { data, error } = await sb.from("client_note_attachments").select("*").eq("note_id", note.id).order("created_at");
+      if (error || !active) return;
+      const list = (data ?? []) as NoteAttachment[];
+      setAttachments(list);
+      const entries = await Promise.all(list.map(async (attachment) => {
+        const { data: signed } = await supabase.storage.from("task-attachments").createSignedUrl(attachment.storage_path, 600);
+        return [attachment.id, signed?.signedUrl ?? ""] as const;
+      }));
+      if (active) setUrls(Object.fromEntries(entries));
+    })();
+    return () => { active = false; };
+  }, [note.id]);
+  return <Card className="mx-auto max-w-4xl space-y-5 p-6"><div><p className="text-xs font-medium text-primary">CONSULTA</p><h2 className="mt-1 text-xl font-bold">{note.title || "Ata sem título"}</h2><p className="mt-1 text-sm text-muted-foreground">{note.note_date ? format(parseISO(note.note_date), "dd/MM/yyyy", { locale: ptBR }) : "Sem data"}</p></div><div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: note.content_html || note.content || "" }} />{attachments.length > 0 && <div className="space-y-2 border-t pt-4"><p className="font-medium">Arquivos anexados</p>{attachments.map((attachment) => <Button key={attachment.id} asChild variant="outline" className="mr-2"><a href={urls[attachment.id] || undefined} target="_blank" rel="noreferrer" aria-disabled={!urls[attachment.id]}><Paperclip className="mr-2 h-4 w-4" />{attachment.file_name}</a></Button>)}</div>}</Card>;
 }
 
 function NoteEditor({
@@ -1018,4 +1040,3 @@ function NoteEditor({
     </>
   );
 }
-
