@@ -530,8 +530,31 @@ export function BillingV2Module() {
       services.find((service) => service.id === serviceId)?.default_rate ?? 0,
     );
   };
-  const residuesForBranch = (branchId: string) =>
-    activeResidues.filter((item) => !item.branch_id || item.branch_id === branchId);
+  const residuesForBranch = (branchId: string) => {
+    const available = activeResidues.filter(
+      (item) => !item.branch_id || (Boolean(branchId) && item.branch_id === branchId),
+    );
+    const byName = new Map<string, Residue>();
+    available.forEach((item) => {
+      const key = serviceNameKey(item.name);
+      const current = byName.get(key);
+      // Quando houver valor próprio do pátio, ele substitui visualmente o
+      // cadastro geral de mesmo nome. Assim a movimentação não consegue
+      // selecionar por engano a regra padrão.
+      if (!current || (item.branch_id === branchId && current.branch_id !== branchId)) {
+        byName.set(key, item);
+      }
+    });
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  };
+  const treatmentRateForBranch = (residueId: string | null | undefined, branchId: string) => {
+    const selected = residues.find((item) => item.id === residueId);
+    if (!selected) return 0;
+    const effective = residuesForBranch(branchId).find(
+      (item) => serviceNameKey(item.name) === serviceNameKey(selected.name),
+    );
+    return Number(effective?.default_treatment_rate ?? selected.default_treatment_rate ?? 0);
+  };
   const activePlacementsAtBranch = useMemo(
     () =>
       placements.filter(
@@ -826,8 +849,9 @@ export function BillingV2Module() {
           )
         : [{ placement: null, replacementEquipmentId: null }];
       const totalWeight = Number(movementForm.weight || 0);
-      const treatmentRate = Number(
-        residues.find((item) => item.id === movementForm.residueId)?.default_treatment_rate ?? 0,
+      const treatmentRate = treatmentRateForBranch(
+        movementForm.residueId,
+        movementForm.branchId,
       );
       const movementRows = pairs.map((pair, index) => ({
         cycle_id: cycleId,
@@ -933,12 +957,15 @@ export function BillingV2Module() {
   });
   const updateMovement = useMutation({
     mutationFn: async ({ id, payload }: { id: string; payload: Partial<Movement> }) => {
-      const residue = residues.find((item) => item.id === payload.waste_residue_id);
+      const currentMovement = movements.find((item) => item.id === id);
       const outgoingEquipment = equipment.find((item) => item.id === payload.equipment_id);
       const { error } = await (supabase.from("billing_v2_movements" as any) as any)
         .update({
           ...payload,
-          treatment_rate: Number(residue?.default_treatment_rate || 0),
+          treatment_rate: treatmentRateForBranch(
+            payload.waste_residue_id,
+            String(payload.branch_id || currentMovement?.branch_id || ""),
+          ),
           exchange_rate: Number(outgoingEquipment?.exchange_rate || 0),
         })
         .eq("id", id);

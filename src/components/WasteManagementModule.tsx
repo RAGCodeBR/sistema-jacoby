@@ -3278,6 +3278,13 @@ function ResidueBranchConfig({
   const save = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw Error("Informe o nome do resíduo.");
+      const normalizedName = optionKey(form.name);
+      const existing = residues.find(
+        (residue) =>
+          residue.client_id === clientId &&
+          (residue.branch_id || "") === (form.branchId || "") &&
+          optionKey(residue.name) === normalizedName,
+      );
       const payload = {
         client_id: clientId,
         branch_id: form.branchId || null,
@@ -3289,15 +3296,17 @@ function ResidueBranchConfig({
         default_treatment_rate: Number(form.treatment || 0),
       };
       const request = supabase.from("waste_residues" as any) as any;
-      const { error } = form.id
-        ? await request.update(payload).eq("id", form.id)
+      const targetId = form.id || existing?.id;
+      const { error } = targetId
+        ? await request.update(payload).eq("id", targetId)
         : await request.insert(payload);
       if (error) throw error;
+      return { updated: Boolean(targetId) };
     },
-    onSuccess: () => {
+    onSuccess: ({ updated }: { updated: boolean }) => {
       setForm((current) => ({ id: "", branchId: current.branchId, name: "", treatment: "0" }));
       onSaved();
-      toast.success("Resíduo e valor de tratamento salvos.");
+      toast.success(updated ? "Valor de tratamento atualizado." : "Resíduo e valor de tratamento salvos.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
