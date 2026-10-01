@@ -95,6 +95,22 @@ type OutsourcedCompanyService = {
   waste_service_id: string;
   waste_services?: { id: string; name: string; active: boolean } | null;
 };
+type OutsourcedCommissionSetting = {
+  id: string;
+  client_id: string;
+  outsourced_company_id: string;
+  tax_withholding_rate: number;
+  rental_commission_rate: number;
+  exchange_commission_rate: number;
+  active: boolean;
+};
+type OutsourcedTreatmentCommissionRate = {
+  id: string;
+  commission_setting_id: string;
+  waste_residue_id: string;
+  outsourced_treatment_rate: number;
+  jacoby_treatment_rate: number | null;
+};
 type ClientServiceRate = { client_id: string; waste_service_id: string; default_rate: number };
 type ReportService = { id: string; waste_service_id: string; rate: number; excluded: boolean };
 type Report = {
@@ -1701,6 +1717,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               >
                 Troca
               </TabsTrigger>
+              <TabsTrigger
+                value="comissionamento"
+                className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5 data-[state=active]:text-primary"
+              >
+                Comissionamento
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="equipamentos" className="space-y-4">
               <Card className="p-4">
@@ -2049,6 +2071,13 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   />
                 )}
               </Card>
+            </TabsContent>
+            <TabsContent value="comissionamento" className="space-y-4">
+              <CommissionSettingsPanel
+                clientId={clientId}
+                residues={residues}
+                companies={outsourcedCompanies}
+              />
             </TabsContent>
             {canConfigureMovements && (
               <TabsContent value="configuracoes" className="space-y-4">
@@ -3417,6 +3446,119 @@ function BillingTable({
     </Card>
   );
 }
+function CommissionSettingsPanel({
+  clientId,
+  residues,
+  companies,
+}: {
+  clientId: string;
+  residues: Residue[];
+  companies: OutsourcedCompany[];
+}) {
+  const qc = useQueryClient();
+  const [companyId, setCompanyId] = useState("");
+  const [form, setForm] = useState({ tax: "11", rental: "10", exchange: "10", active: true });
+  const settingsQuery = useQuery({
+    queryKey: ["outsourced-commission-settings", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_commission_settings" as any) as any)
+        .select("*")
+        .eq("client_id", clientId);
+      if (error) throw error;
+      return (data || []) as OutsourcedCommissionSetting[];
+    },
+  });
+  const settings = settingsQuery.data || [];
+  useEffect(() => {
+    if (!companyId && companies.length) setCompanyId(companies[0].id);
+  }, [companyId, companies]);
+  const current = settings.find((setting) => setting.outsourced_company_id === companyId);
+  useEffect(() => {
+    setForm({
+      tax: String(current?.tax_withholding_rate ?? 11),
+      rental: String(current?.rental_commission_rate ?? 10),
+      exchange: String(current?.exchange_commission_rate ?? 10),
+      active: current?.active ?? true,
+    });
+  }, [current?.id, current?.tax_withholding_rate, current?.rental_commission_rate, current?.exchange_commission_rate, current?.active]);
+  const ratesQuery = useQuery({
+    queryKey: ["outsourced-treatment-commission-rates", current?.id],
+    enabled: Boolean(current?.id),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_treatment_commission_rates" as any) as any)
+        .select("*")
+        .eq("commission_setting_id", current!.id);
+      if (error) throw error;
+      return (data || []) as OutsourcedTreatmentCommissionRate[];
+    },
+  });
+  const treatmentRates = ratesQuery.data || [];
+  const number = (value: string) => Math.max(0, Number(value.replace(",", ".")) || 0);
+  const saveSettings = async () => {
+    if (!clientId || !companyId) return toast.error("Selecione a empresa terceirizada.");
+    const { error } = await (supabase.from("outsourced_commission_settings" as any) as any).upsert(
+      {
+        client_id: clientId,
+        outsourced_company_id: companyId,
+        tax_withholding_rate: number(form.tax),
+        rental_commission_rate: number(form.rental),
+        exchange_commission_rate: number(form.exchange),
+        active: form.active,
+      },
+      { onConflict: "client_id,outsourced_company_id" },
+    );
+    if (error) return toast.error(error.message);
+    await qc.invalidateQueries({ queryKey: ["outsourced-commission-settings", clientId] });
+    toast.success("Regra de comissionamento salva.");
+  };
+  const saveTreatment = async (residueId: string, outsourcedRate: string, jacobyRate: string) => {
+    if (!current?.id) return toast.error("Salve primeiro a regra geral da terceirizada.");
+    const { error } = await (supabase.from("outsourced_treatment_commission_rates" as any) as any).upsert(
+      {
+        commission_setting_id: current.id,
+        waste_residue_id: residueId,
+        outsourced_treatment_rate: number(outsourcedRate),
+        jacoby_treatment_rate: jacobyRate.trim() === "" ? null : number(jacobyRate),
+      },
+      { onConflict: "commission_setting_id,waste_residue_id" },
+    );
+    if (error) return toast.error(error.message);
+    await qc.invalidateQueries({ queryKey: ["outsourced-treatment-commission-rates", current.id] });
+    toast.success("Regra de tratamento salva.");
+  };
+  return <>
+    <Card className="p-4">
+      <h2 className="font-semibold">Comissionamento de terceirizadas</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        A comissão é calculada sobre a parcela da Jacoby. Locação e troca usam percentual sobre o valor do BM; no tratamento, informe o valor/kg da terceirizada e a parcela/kg da Jacoby.
+      </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <Field label="Empresa terceirizada">
+          <Select value={companyId} onValueChange={setCompanyId}>
+            <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+            <SelectContent>{companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        <Field label="Abatimento / imposto (%)"><Input type="number" min="0" max="100" step="0.01" value={form.tax} onChange={(event) => setForm({ ...form, tax: event.target.value })} /></Field>
+        <Field label="Comissão de locação (%)"><Input type="number" min="0" max="100" step="0.01" value={form.rental} onChange={(event) => setForm({ ...form, rental: event.target.value })} /></Field>
+        <Field label="Comissão de troca (%)"><Input type="number" min="0" max="100" step="0.01" value={form.exchange} onChange={(event) => setForm({ ...form, exchange: event.target.value })} /></Field>
+        <Button className="self-end" onClick={() => void saveSettings()}>Salvar regra</Button>
+      </div>
+    </Card>
+    <Card className="overflow-x-auto p-4">
+      <h2 className="font-semibold">Tratamento por resíduo</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Exemplo da planilha: valor total de R$ 0,35/kg, R$ 0,30/kg para a LDJ e R$ 0,05/kg para a Jacoby. O abatimento incide somente na parcela da Jacoby.</p>
+      {!current ? <p className="py-8 text-center text-sm text-muted-foreground">Salve a regra geral para liberar os valores por resíduo.</p> : <table className="mt-4 min-w-[760px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Resíduo</th><th className="p-2">Valor do cliente/kg</th><th className="p-2">Terceirizada/kg</th><th className="p-2">Jacoby/kg</th><th className="p-2">Ação</th></tr></thead><tbody>{residues.filter((residue) => residue.active).map((residue) => {
+        const rate = treatmentRates.find((item) => item.waste_residue_id === residue.id);
+        const provider = String(rate?.outsourced_treatment_rate ?? 0);
+        const jacoby = rate?.jacoby_treatment_rate == null ? "" : String(rate.jacoby_treatment_rate);
+        return <tr key={`${current.id}-${residue.id}`} className="border-b"><td className="p-2 font-medium">{residue.name}</td><td className="p-2">{money(Number(residue.default_treatment_rate || 0))}</td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" defaultValue={provider} id={`provider-${residue.id}`} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" placeholder="Automático" defaultValue={jacoby} id={`jacoby-${residue.id}`} /></td><td className="p-2"><Button size="sm" variant="outline" onClick={() => void saveTreatment(residue.id, (document.getElementById(`provider-${residue.id}`) as HTMLInputElement)?.value || "0", (document.getElementById(`jacoby-${residue.id}`) as HTMLInputElement)?.value || "")}>Salvar</Button></td></tr>;
+      })}</tbody></table>}
+    </Card>
+  </>;
+}
+
 function ClientMovementPrices({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({

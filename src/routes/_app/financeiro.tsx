@@ -56,6 +56,21 @@ type FinancialService = {
   financial_notes: string | null;
 };
 type Cycle = { id: string; client_id: string; branch_id: string | null; bulletin_number: number };
+type MovementCommission = {
+  id: string;
+  cycle_id: string;
+  client_id: string;
+  outsourced_company_id: string;
+  source_type: "rental" | "exchange" | "treatment";
+  waste_residue_id: string | null;
+  execution_date: string | null;
+  base_amount: number;
+  gross_commission_amount: number;
+  tax_withheld_amount: number;
+  net_commission_amount: number;
+  payment_status: "pending" | "received";
+  received_on: string | null;
+};
 type Named = { id: string; name?: string; legal_name?: string; trade_name?: string | null };
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const emptyForm = {
@@ -103,6 +118,16 @@ function FinancialControlPage() {
       return (data || []) as FinancialService[];
     },
   });
+  const movementCommissionsQuery = useQuery({
+    queryKey: ["outsourced-movement-commissions"],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_movement_commissions" as any) as any)
+        .select("*")
+        .order("execution_date", { ascending: false });
+      if (error) throw error;
+      return (data || []) as MovementCommission[];
+    },
+  });
   const cyclesQuery = useQuery({
     queryKey: ["outsourced-financial-cycles"],
     queryFn: async () => {
@@ -143,10 +168,19 @@ function FinancialControlPage() {
       return (data || []) as Named[];
     },
   });
+  const residuesQuery = useQuery({
+    queryKey: ["outsourced-financial-residues"],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_residues" as any) as any).select("id,name");
+      if (error) throw error;
+      return (data || []) as Named[];
+    },
+  });
   const cycles = cyclesQuery.data || [],
     companies = companiesQuery.data || [],
     catalog = servicesCatalogQuery.data || [],
-    branches = branchesQuery.data || [];
+    branches = branchesQuery.data || [],
+    residues = residuesQuery.data || [];
   const rows = useMemo(
     () =>
       (servicesQuery.data || [])
@@ -195,6 +229,28 @@ function FinancialControlPage() {
         100,
     0,
   );
+  const movementCommissionRows = useMemo(
+    () => (movementCommissionsQuery.data || []).map((item) => {
+      const cycle = cycles.find((value) => value.id === item.cycle_id);
+      const client = clients.find((value) => value.id === item.client_id);
+      const company = companies.find((value) => value.id === item.outsourced_company_id);
+      const residue = residues.find((value) => value.id === item.waste_residue_id);
+      return { item, cycle, clientName: client?.name || "", companyName: company?.trade_name || company?.legal_name || "", residueName: residue?.name || "" };
+    }).filter((row) => companyFilter === "all" || row.item.outsourced_company_id === companyFilter),
+    [movementCommissionsQuery.data, cycles, clients, companies, residues, companyFilter],
+  );
+  const movementCommissionTotal = movementCommissionRows.reduce((total, row) => total + Number(row.item.net_commission_amount || 0), 0);
+  const settleMovementCommission = useMutation({
+    mutationFn: async (item: MovementCommission) => {
+      const received = item.payment_status !== "received";
+      const { error } = await (supabase.from("outsourced_movement_commissions" as any) as any)
+        .update({ payment_status: received ? "received" : "pending", received_on: received ? new Date().toISOString().slice(0, 10) : null })
+        .eq("id", item.id);
+      if (error) throw error;
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["outsourced-movement-commissions"] }),
+    onError: (error: Error) => toast.error(error.message),
+  });
   const openEdit = (item: FinancialService) => {
     setEditing(item);
     setForm({
@@ -304,10 +360,11 @@ function FinancialControlPage() {
           </Select>
         </div>
       </Card>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="A receber das terceirizadas" value={totalOpen} />
         <Metric label="Recebido" value={totalReceived} />
         <Metric label="Comissão prevista" value={commissionTotal} />
+        <Metric label="Comissão líquida de movimentações" value={movementCommissionTotal} />
       </div>
       <Card className="overflow-hidden">
         <div className="border-b p-4">
@@ -428,6 +485,10 @@ function FinancialControlPage() {
             </table>
           </div>
         )}
+      </Card>
+      <Card className="overflow-hidden">
+        <div className="border-b p-4"><h2 className="font-semibold">Comissões de movimentações e tratamentos</h2><p className="mt-1 text-sm text-muted-foreground">Geradas automaticamente ao finalizar um BM emitido por terceirizada, conforme a configuração de comissionamento.</p></div>
+        {movementCommissionsQuery.isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando comissões...</p> : !movementCommissionRows.length ? <p className="p-10 text-center text-sm text-muted-foreground">Nenhuma comissão de movimentação gerada ainda.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1200px] text-sm"><thead><tr className="border-b bg-muted/30 text-left text-muted-foreground"><th className="p-3">Cliente</th><th className="p-3">Terceirizada</th><th className="p-3">Tipo</th><th className="p-3">Resíduo</th><th className="p-3">Execução</th><th className="p-3">BM</th><th className="p-3">Base</th><th className="p-3">Bruta</th><th className="p-3">Imposto</th><th className="p-3">Líquida</th><th className="p-3">Recebimento</th><th className="p-3" /></tr></thead><tbody>{movementCommissionRows.map(({ item, cycle, clientName, companyName, residueName }) => <tr key={item.id} className="border-b"><td className="p-3">{clientName}</td><td className="p-3">{companyName}</td><td className="p-3">{{ rental: "Locação", exchange: "Troca", treatment: "Tratamento" }[item.source_type]}</td><td className="p-3">{residueName || "—"}</td><td className="p-3">{formatDate(item.execution_date)}</td><td className="p-3">#{String(cycle?.bulletin_number || 0).padStart(3, "0")}</td><td className="p-3">{money.format(Number(item.base_amount || 0))}</td><td className="p-3">{money.format(Number(item.gross_commission_amount || 0))}</td><td className="p-3">{money.format(Number(item.tax_withheld_amount || 0))}</td><td className="p-3 font-medium">{money.format(Number(item.net_commission_amount || 0))}</td><td className="p-3">{item.payment_status === "received" ? `Recebido ${formatDate(item.received_on)}` : "Aguardando"}</td><td className="p-3"><Button size="sm" variant="outline" disabled={settleMovementCommission.isPending} onClick={() => settleMovementCommission.mutate(item)}>{item.payment_status === "received" ? "Reabrir" : "Dar baixa"}</Button></td></tr>)}</tbody></table></div>}
       </Card>
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
