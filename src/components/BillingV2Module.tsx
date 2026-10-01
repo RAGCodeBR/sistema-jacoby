@@ -1122,7 +1122,6 @@ export function BillingV2Module() {
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
     filteredServices.some((service) => service.outsourced_company_id === company.id),
   );
-  const hasThirdPartyContext = Boolean(documentThirdParty) || filteredServices.length > 0;
   const availableServices = services.filter((service) => {
     if (cycle?.issuer_type !== "outsourced" || !cycle.outsourced_company_id) return true;
     return outsourcedCompanyServices.some((link) =>
@@ -1146,7 +1145,7 @@ export function BillingV2Module() {
     const pdfDocumentThirdParty = pdfIssuerCompany || outsourcedCompanies.find((company) =>
       pdfServices.some((service) => service.outsourced_company_id === company.id),
     );
-    const pdfHasThirdPartyContext = Boolean(pdfDocumentThirdParty) || pdfServices.length > 0;
+    const pdfHasThirdPartyContext = Boolean(pdfDocumentThirdParty);
     const confirmedMovements = pdfMovements.filter((item) => item.confirmed);
     const branchIds = Array.from(new Set([...pdfPlacements, ...confirmedMovements].map((item) => item.branch_id).filter(Boolean)));
     if (!branchIds.length && printableCycle?.branch_id) branchIds.push(printableCycle.branch_id);
