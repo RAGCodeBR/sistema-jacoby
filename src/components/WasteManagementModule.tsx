@@ -111,6 +111,21 @@ type OutsourcedTreatmentCommissionRate = {
   outsourced_treatment_rate: number;
   jacoby_treatment_rate: number | null;
 };
+type OutsourcedCommissionTemplate = {
+  id: string;
+  outsourced_company_id: string;
+  tax_withholding_rate: number;
+  rental_commission_rate: number;
+  exchange_commission_rate: number;
+  active: boolean;
+};
+type OutsourcedTreatmentCommissionTemplateRate = {
+  id: string;
+  commission_template_id: string;
+  residue_name: string;
+  outsourced_treatment_rate: number;
+  jacoby_treatment_rate: number | null;
+};
 type ClientServiceRate = { client_id: string; waste_service_id: string; default_rate: number };
 type ReportService = { id: string; waste_service_id: string; rate: number; excluded: boolean };
 type Report = {
@@ -3474,14 +3489,27 @@ function CommissionSettingsPanel({
     if (!companyId && companies.length) setCompanyId(companies[0].id);
   }, [companyId, companies]);
   const current = settings.find((setting) => setting.outsourced_company_id === companyId);
+  const templateQuery = useQuery({
+    queryKey: ["outsourced-commission-template", companyId],
+    enabled: Boolean(companyId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_commission_templates" as any) as any)
+        .select("*")
+        .eq("outsourced_company_id", companyId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as OutsourcedCommissionTemplate | null;
+    },
+  });
+  const template = templateQuery.data;
   useEffect(() => {
     setForm({
-      tax: String(current?.tax_withholding_rate ?? 11),
-      rental: String(current?.rental_commission_rate ?? 10),
-      exchange: String(current?.exchange_commission_rate ?? 10),
-      active: current?.active ?? true,
+      tax: String(current?.tax_withholding_rate ?? template?.tax_withholding_rate ?? 11),
+      rental: String(current?.rental_commission_rate ?? template?.rental_commission_rate ?? 10),
+      exchange: String(current?.exchange_commission_rate ?? template?.exchange_commission_rate ?? 10),
+      active: current?.active ?? template?.active ?? true,
     });
-  }, [current?.id, current?.tax_withholding_rate, current?.rental_commission_rate, current?.exchange_commission_rate, current?.active]);
+  }, [current?.id, current?.tax_withholding_rate, current?.rental_commission_rate, current?.exchange_commission_rate, current?.active, template?.id, template?.tax_withholding_rate, template?.rental_commission_rate, template?.exchange_commission_rate, template?.active]);
   const ratesQuery = useQuery({
     queryKey: ["outsourced-treatment-commission-rates", current?.id],
     enabled: Boolean(current?.id),
@@ -3494,6 +3522,18 @@ function CommissionSettingsPanel({
     },
   });
   const treatmentRates = ratesQuery.data || [];
+  const templateRatesQuery = useQuery({
+    queryKey: ["outsourced-treatment-commission-template-rates", template?.id],
+    enabled: Boolean(template?.id),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("outsourced_treatment_commission_template_rates" as any) as any)
+        .select("*")
+        .eq("commission_template_id", template!.id);
+      if (error) throw error;
+      return (data || []) as OutsourcedTreatmentCommissionTemplateRate[];
+    },
+  });
+  const templateRates = templateRatesQuery.data || [];
   const number = (value: string) => Math.max(0, Number(value.replace(",", ".")) || 0);
   const saveSettings = async () => {
     if (!clientId || !companyId) return toast.error("Selecione a empresa terceirizada.");
@@ -3533,6 +3573,7 @@ function CommissionSettingsPanel({
       <p className="mt-1 text-sm text-muted-foreground">
         Na locação e na troca, o abatimento é aplicado ao valor do BM antes do percentual da Jacoby. No tratamento, o abatimento incide somente sobre a parcela/kg da Jacoby.
       </p>
+      {template && !current && <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">Modelo padrão da {companies.find((company) => company.id === companyId)?.trade_name || companies.find((company) => company.id === companyId)?.legal_name} aplicado. Ao salvar, você cria uma exceção editável somente para este cliente.</p>}
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Field label="Empresa terceirizada">
           <Select value={companyId} onValueChange={setCompanyId}>
@@ -3549,11 +3590,13 @@ function CommissionSettingsPanel({
     <Card className="overflow-x-auto p-4">
       <h2 className="font-semibold">Tratamento por resíduo</h2>
       <p className="mt-1 text-sm text-muted-foreground">Exemplo da planilha: valor total de R$ 0,35/kg, R$ 0,30/kg para a LDJ e R$ 0,05/kg para a Jacoby. O abatimento incide somente na parcela da Jacoby.</p>
-      {!current ? <p className="py-8 text-center text-sm text-muted-foreground">Salve a regra geral para liberar os valores por resíduo.</p> : <table className="mt-4 min-w-[760px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Resíduo</th><th className="p-2">Valor do cliente/kg</th><th className="p-2">Terceirizada/kg</th><th className="p-2">Jacoby/kg</th><th className="p-2">Ação</th></tr></thead><tbody>{residues.filter((residue) => residue.active).map((residue) => {
+      {!current && !template ? <p className="py-8 text-center text-sm text-muted-foreground">Salve a regra geral para liberar os valores por resíduo.</p> : <table className="mt-4 min-w-[760px] w-full text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Resíduo</th><th className="p-2">Valor do cliente/kg</th><th className="p-2">Terceirizada/kg</th><th className="p-2">Jacoby/kg</th><th className="p-2">Ação</th></tr></thead><tbody>{residues.filter((residue) => residue.active).map((residue) => {
         const rate = treatmentRates.find((item) => item.waste_residue_id === residue.id);
-        const provider = String(rate?.outsourced_treatment_rate ?? 0);
-        const jacoby = rate?.jacoby_treatment_rate == null ? "" : String(rate.jacoby_treatment_rate);
-        return <tr key={`${current.id}-${residue.id}`} className="border-b"><td className="p-2 font-medium">{residue.name}</td><td className="p-2">{money(Number(residue.default_treatment_rate || 0))}</td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" defaultValue={provider} id={`provider-${residue.id}`} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" placeholder="Automático" defaultValue={jacoby} id={`jacoby-${residue.id}`} /></td><td className="p-2"><Button size="sm" variant="outline" onClick={() => void saveTreatment(residue.id, (document.getElementById(`provider-${residue.id}`) as HTMLInputElement)?.value || "0", (document.getElementById(`jacoby-${residue.id}`) as HTMLInputElement)?.value || "")}>Salvar</Button></td></tr>;
+        const templateRate = templateRates.find((item) => item.residue_name.trim().toLocaleLowerCase() === residue.name.trim().toLocaleLowerCase());
+        const provider = String(rate?.outsourced_treatment_rate ?? templateRate?.outsourced_treatment_rate ?? 0);
+        const jacobyValue = rate?.jacoby_treatment_rate ?? templateRate?.jacoby_treatment_rate;
+        const jacoby = jacobyValue == null ? "" : String(jacobyValue);
+        return <tr key={`${current?.id || template?.id}-${residue.id}`} className="border-b"><td className="p-2 font-medium">{residue.name}</td><td className="p-2">{money(Number(residue.default_treatment_rate || 0))}</td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" defaultValue={provider} id={`provider-${residue.id}`} /></td><td className="p-2"><Input className="h-8 w-28" type="number" min="0" step="0.0001" placeholder="Automático" defaultValue={jacoby} id={`jacoby-${residue.id}`} /></td><td className="p-2"><Button size="sm" variant="outline" disabled={!current} title={!current ? "Salve a regra geral para criar uma exceção deste cliente" : undefined} onClick={() => void saveTreatment(residue.id, (document.getElementById(`provider-${residue.id}`) as HTMLInputElement)?.value || "0", (document.getElementById(`jacoby-${residue.id}`) as HTMLInputElement)?.value || "")}>Salvar</Button></td></tr>;
       })}</tbody></table>}
     </Card>
   </>;
