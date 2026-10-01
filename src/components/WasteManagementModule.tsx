@@ -719,6 +719,25 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         })
         .eq("id", selectedEquipment.id);
       if (error) throw error;
+      // O valor configurado deve entrar nos boletins ainda abertos. Boletins
+      // finalizados mantêm a taxa histórica com que foram emitidos.
+      const { data: draftCycles, error: cyclesError } = await (
+        supabase.from("billing_v2_cycles" as any) as any
+      )
+        .select("id")
+        .eq("client_id", clientId)
+        .eq("status", "draft");
+      if (cyclesError) throw cyclesError;
+      const cycleIds = (draftCycles || []).map((cycle: { id: string }) => cycle.id);
+      if (cycleIds.length) {
+        const { error: movementsError } = await (
+          supabase.from("billing_v2_movements" as any) as any
+        )
+          .update({ exchange_rate: Number(exchangeForm.rate || 0) })
+          .in("cycle_id", cycleIds)
+          .eq("equipment_id", selectedEquipment.id);
+        if (movementsError) throw movementsError;
+      }
     },
     onSuccess: () => {
       toast.success("Configuração de troca atualizada.");
