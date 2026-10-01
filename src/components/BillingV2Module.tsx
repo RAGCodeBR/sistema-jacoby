@@ -1,7 +1,7 @@
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Download, FilePlus2, FileText, Pencil, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileText, Pencil, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -69,6 +69,7 @@ type Placement = {
 };
 type Movement = {
   id: string;
+  batch_id?: string | null;
   branch_id: string;
   equipment_id: string | null;
   replacement_equipment_id: string | null;
@@ -848,6 +849,7 @@ export function BillingV2Module() {
             })),
           )
         : [{ placement: null, replacementEquipmentId: null }];
+      const batchId = pairs.length > 1 ? crypto.randomUUID() : null;
       const totalWeight = Number(movementForm.weight || 0);
       const treatmentRate = treatmentRateForBranch(
         movementForm.residueId,
@@ -855,6 +857,7 @@ export function BillingV2Module() {
       );
       const movementRows = pairs.map((pair, index) => ({
         cycle_id: cycleId,
+        batch_id: batchId,
         branch_id: movementForm.branchId,
         equipment_id: pair.placement?.equipment_id || null,
         replacement_equipment_id: pair.replacementEquipmentId || null,
@@ -943,10 +946,10 @@ export function BillingV2Module() {
     onError: (error: Error) => toast.error(error.message),
   });
   const toggleMovementConfirmation = useMutation({
-    mutationFn: async ({ id, confirmed }: { id: string; confirmed: boolean }) => {
+    mutationFn: async ({ ids, confirmed }: { ids: string[]; confirmed: boolean }) => {
       const { error } = await (supabase.from("billing_v2_movements" as any) as any)
         .update({ confirmed })
-        .eq("id", id);
+        .in("id", ids);
       if (error) throw error;
     },
     onSuccess: (_data, { confirmed }) => {
@@ -986,6 +989,23 @@ export function BillingV2Module() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-movement-attachments", cycleId] });
       toast.success("PDF anexado à movimentação.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const removeMovementAttachment = useMutation({
+    mutationFn: async (attachment: MovementAttachment) => {
+      const { error: storageError } = await supabase.storage
+        .from("movement-documents")
+        .remove([attachment.storage_path]);
+      if (storageError) throw storageError;
+      const { error } = await (supabase.from("billing_v2_movement_attachments" as any) as any)
+        .delete()
+        .eq("id", attachment.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-movement-attachments", cycleId] });
+      toast.success("PDF removido da movimentação.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1067,6 +1087,24 @@ export function BillingV2Module() {
   const remove = async (table: string, id: string) => {
     if (!confirm("Excluir este lançamento?") || !id) return;
     const { error } = await (supabase.from(table as any) as any).delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else refresh();
+  };
+  const removeMovements = async (ids: string[]) => {
+    if (!ids.length || !confirm(ids.length > 1 ? "Excluir esta movimentação agrupada e todos os equipamentos dela?" : "Excluir esta movimentação?")) return;
+    const movementFiles = movementAttachments.filter((attachment) => ids.includes(attachment.movement_id));
+    if (movementFiles.length) {
+      const { error: storageError } = await supabase.storage
+        .from("movement-documents")
+        .remove(movementFiles.map((attachment) => attachment.storage_path));
+      if (storageError) {
+        toast.error(storageError.message);
+        return;
+      }
+    }
+    const { error } = await (supabase.from("billing_v2_movements" as any) as any)
+      .delete()
+      .in("id", ids);
     if (error) toast.error(error.message);
     else refresh();
   };
@@ -1997,13 +2035,15 @@ export function BillingV2Module() {
                 branches={branches}
                 equipment={equipment}
                 residues={residues}
-                onDelete={(id) => void remove("billing_v2_movements", id)}
-                onConfirmationChange={(id, confirmed) => toggleMovementConfirmation.mutate({ id, confirmed })}
-                changingConfirmationId={toggleMovementConfirmation.isPending ? toggleMovementConfirmation.variables?.id : undefined}
+                onDelete={(ids) => void removeMovements(ids)}
+                onConfirmationChange={(ids, confirmed) => toggleMovementConfirmation.mutate({ ids, confirmed })}
+                changingConfirmationIds={toggleMovementConfirmation.isPending ? toggleMovementConfirmation.variables?.ids : undefined}
                 onSave={(id, payload) => updateMovement.mutate({ id, payload })}
                 savingId={updateMovement.isPending ? updateMovement.variables?.id : undefined}
                 attachments={movementAttachments}
                 onAttachmentAdd={(movementId, fileName, storagePath) => addMovementAttachment.mutateAsync({ movementId, fileName, storagePath })}
+                onAttachmentRemove={(attachment) => removeMovementAttachment.mutate(attachment)}
+                removingAttachmentId={removeMovementAttachment.isPending ? removeMovementAttachment.variables?.id : undefined}
                 uploadingId={addMovementAttachment.isPending ? addMovementAttachment.variables?.movementId : undefined}
                 />
               </div>
@@ -2240,32 +2280,39 @@ function MovementTable({
   residues,
   onDelete,
   onConfirmationChange,
-  changingConfirmationId,
+  changingConfirmationIds,
   onSave,
   savingId,
   attachments,
   onAttachmentAdd,
+  onAttachmentRemove,
+  removingAttachmentId,
   uploadingId,
 }: {
   rows: Movement[];
   branches: Branch[];
   equipment: Equipment[];
   residues: Residue[];
-  onDelete: (id: string) => void;
-  onConfirmationChange: (id: string, confirmed: boolean) => void;
-  changingConfirmationId?: string;
+  onDelete: (ids: string[]) => void;
+  onConfirmationChange: (ids: string[], confirmed: boolean) => void;
+  changingConfirmationIds?: string[];
   onSave: (id: string, payload: Partial<Movement>) => void;
   savingId?: string;
   attachments: MovementAttachment[];
   onAttachmentAdd: (movementId: string, fileName: string, storagePath: string) => Promise<unknown>;
+  onAttachmentRemove: (attachment: MovementAttachment) => void;
+  removingAttachmentId?: string;
   uploadingId?: string;
 }) {
   const [editing, setEditing] = useState<Movement | null>(null);
+  const [editingRows, setEditingRows] = useState<Movement[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [draft, setDraft] = useState({
     date: "", order: "", mtr: "", residueId: "", outgoingId: "", incomingId: "", placed: "0", removed: "0", weight: "0", observation: "",
   });
-  const openEditor = (row: Movement) => {
+  const openEditor = (row: Movement, groupRows = [row]) => {
     setEditing(row);
+    setEditingRows(groupRows);
     setDraft({
       date: row.occurred_on,
       order: row.service_order || "",
@@ -2273,28 +2320,43 @@ function MovementTable({
       residueId: row.waste_residue_id || "",
       outgoingId: row.equipment_id || "",
       incomingId: row.replacement_equipment_id || "",
-      placed: String(Number(row.placed_quantity || 0)),
-      removed: String(Number(row.removed_quantity || 0)),
-      weight: String(Number(row.weight_kg || 0)),
+      placed: String(groupRows.reduce((sum, item) => sum + Number(item.placed_quantity || 0), 0)),
+      removed: String(groupRows.reduce((sum, item) => sum + Number(item.removed_quantity || 0), 0)),
+      weight: String(groupRows.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0)),
       observation: row.observation || "",
     });
   };
   const saveEditor = () => {
     if (!editing) return;
-    onSave(editing.id, {
+    const rowsToSave = editingRows.length ? editingRows : [editing];
+    rowsToSave.forEach((row) => onSave(row.id, {
       occurred_on: draft.date,
       service_order: draft.order || null,
       mtr_number: draft.mtr.trim() || null,
       waste_residue_id: draft.residueId || null,
-      equipment_id: draft.outgoingId || null,
-      replacement_equipment_id: draft.incomingId || null,
-      placed_quantity: Number(draft.placed || 0),
-      removed_quantity: Number(draft.removed || 0),
-      weight_kg: Number(draft.weight || 0),
+      equipment_id: row.equipment_id,
+      replacement_equipment_id: row.replacement_equipment_id,
+      placed_quantity: Number(draft.placed || 0) / rowsToSave.length,
+      removed_quantity: Number(draft.removed || 0) / rowsToSave.length,
+      weight_kg: Number(draft.weight || 0) / rowsToSave.length,
       observation: draft.observation || null,
-    });
+    }));
     setEditing(null);
+    setEditingRows([]);
   };
+  const groups = useMemo(() => {
+    const map = new Map<string, Movement[]>();
+    rows.forEach((row) => {
+      const key = row.batch_id || [
+        "legacy", row.branch_id, row.occurred_on, row.service_order || "", row.mtr_number || "",
+        row.waste_residue_id || "", row.observation || "", row.confirmed,
+      ].join("|");
+      map.set(key, [...(map.get(key) || []), row]);
+    });
+    return Array.from(map.entries()).map(([key, groupRows]) => ({ key, rows: groupRows }));
+  }, [rows]);
+  const toggleDetails = (key: string) =>
+    setExpandedGroups((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   const branchEquipment = editing ? equipment.filter((item) => item.branch_id === editing.branch_id) : [];
   const branchResidues = editing ? residues.filter((item) => !item.branch_id || item.branch_id === editing.branch_id) : [];
   const uploadPdf = async (row: Movement, file?: File) => {
@@ -2346,9 +2408,22 @@ function MovementTable({
           </tr>
         </thead>
         <tbody>
-          {rows.length ? (
-            rows.map((row) => (
-              <tr key={row.id} className="border-b">
+          {groups.length ? (
+            groups.map(({ key, rows: groupRows }) => {
+              const row = groupRows[0];
+              const isBatch = groupRows.length > 1;
+              const isExpanded = expandedGroups.includes(key);
+              const groupIds = groupRows.map((item) => item.id);
+              const groupAttachments = attachments.filter((attachment) => groupIds.includes(attachment.movement_id));
+              const totalPlaced = groupRows.reduce((sum, item) => sum + Number(item.placed_quantity || 0), 0);
+              const totalRemoved = groupRows.reduce((sum, item) => sum + Number(item.removed_quantity || 0), 0);
+              const totalWeight = groupRows.reduce((sum, item) => sum + Number(item.weight_kg || 0), 0);
+              const allConfirmed = groupRows.every((item) => item.confirmed);
+              const isChanging = groupRows.some((item) => changingConfirmationIds?.includes(item.id));
+              const isSaving = groupRows.some((item) => savingId === item.id);
+              return (
+              <Fragment key={key}>
+              <tr className="border-b">
                 <td className="p-2">
                   {new Date(`${row.occurred_on}T12:00:00`).toLocaleDateString("pt-BR")}
                 </td>
@@ -2358,10 +2433,15 @@ function MovementTable({
                   {branches.find((item) => item.id === row.branch_id)?.name || "—"}
                 </td>
                 <td className="p-2">
-                  {equipmentName(equipment.find((item) => item.id === row.equipment_id || ""))}
+                  {isBatch ? (
+                    <Button variant="link" size="sm" className="h-auto p-0 text-left" onClick={() => toggleDetails(key)}>
+                      {isExpanded ? <ChevronDown className="mr-1 h-4 w-4" /> : <ChevronRight className="mr-1 h-4 w-4" />}
+                      {groupRows.length} equipamentos · detalhar
+                    </Button>
+                  ) : equipmentName(equipment.find((item) => item.id === row.equipment_id || ""))}
                 </td>
                 <td className="p-2">
-                  {row.replacement_equipment_id
+                  {isBatch ? `${number(totalPlaced)} colocada(s)` : row.replacement_equipment_id
                     ? equipmentName(
                         equipment.find((item) => item.id === row.replacement_equipment_id || ""),
                       )
@@ -2370,15 +2450,20 @@ function MovementTable({
                 <td className="p-2">
                   {residues.find((item) => item.id === row.waste_residue_id)?.name || "—"}
                 </td>
-                <td className="p-2">{number(Number(row.placed_quantity))}</td>
-                <td className="p-2">{number(Number(row.removed_quantity))}</td>
-                <td className="p-2">{number(Number(row.weight_kg))} kg</td>
+                <td className="p-2">{number(totalPlaced)}</td>
+                <td className="p-2">{number(totalRemoved)}</td>
+                <td className="p-2">{number(totalWeight)} kg</td>
                 <td className="max-w-48 p-2 text-sm" title={row.observation || undefined}>
                   {row.observation || "—"}
                 </td>
                 <td className="p-2">
                   <div className="flex min-w-40 flex-col items-start gap-1">
-                    {attachments.filter((attachment) => attachment.movement_id === row.id).map((attachment) => <Button key={attachment.id} variant="link" size="sm" className="h-auto max-w-40 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{attachment.file_name}</span></Button>)}
+                    {groupAttachments.map((attachment) => (
+                      <div key={attachment.id} className="flex max-w-40 items-center gap-1">
+                        <Button variant="link" size="sm" className="h-auto min-w-0 flex-1 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{attachment.file_name}</span></Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" title="Excluir este PDF" aria-label={`Excluir PDF ${attachment.file_name}`} disabled={removingAttachmentId === attachment.id} onClick={() => { if (window.confirm(`Excluir o PDF \"${attachment.file_name}\"?`)) onAttachmentRemove(attachment); }}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      </div>
+                    ))}
                     <label className="inline-flex">
                       <input className="sr-only" type="file" accept="application/pdf,.pdf" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
                       <Button asChild variant="outline" size="sm" disabled={uploadingId === row.id} aria-label="Adicionar PDF à movimentação">
@@ -2390,25 +2475,41 @@ function MovementTable({
                 <td className="p-2">
                   <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm font-medium">
                     <Checkbox
-                      checked={row.confirmed}
-                      disabled={changingConfirmationId === row.id}
-                      onCheckedChange={(checked) => onConfirmationChange(row.id, checked === true)}
+                      checked={allConfirmed}
+                      disabled={isChanging}
+                      onCheckedChange={(checked) => onConfirmationChange(groupIds, checked === true)}
                     />
-                    {row.confirmed ? "Gera valor" : "Não gera valor"}
+                    {allConfirmed ? "Gera valor" : "Não gera valor"}
                   </label>
                 </td>
                 <td className="p-2">
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Editar movimentação" onClick={() => openEditor(row)}>
+                    <Button variant="ghost" size="icon" aria-label="Editar movimentação" disabled={isSaving} onClick={() => openEditor(row, groupRows)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" aria-label="Excluir movimentação" onClick={() => onDelete(row.id)}>
+                    <Button variant="ghost" size="icon" aria-label="Excluir movimentação" onClick={() => onDelete(groupIds)}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
                 </td>
               </tr>
-            ))
+              {isBatch && isExpanded && (
+                <tr className="border-b bg-muted/30">
+                  <td className="p-3" colSpan={14}>
+                    <p className="text-sm font-medium">Detalhamento dos equipamentos</p>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {groupRows.map((item, index) => (
+                        <div key={item.id} className="rounded-md border bg-background p-2 text-xs">
+                          <span className="font-medium">{index + 1}.</span> Saiu {equipmentName(equipment.find((equipmentItem) => equipmentItem.id === item.equipment_id || ""))} · Entrou {item.replacement_equipment_id ? equipmentName(equipment.find((equipmentItem) => equipmentItem.id === item.replacement_equipment_id || "")) : "—"} · {number(Number(item.weight_kg || 0))} kg
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })
           ) : (
             <tr>
               <td className="p-5 text-center text-muted-foreground" colSpan={14}>
@@ -2419,7 +2520,7 @@ function MovementTable({
         </tbody>
       </table>
     </Card>
-    <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+    <Dialog open={!!editing} onOpenChange={(open) => { if (!open) { setEditing(null); setEditingRows([]); } }}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar movimentação</DialogTitle>
@@ -2434,6 +2535,11 @@ function MovementTable({
               <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Sem resíduo</SelectItem>{branchResidues.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
+          {editingRows.length > 1 ? (
+            <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              Esta é uma movimentação agrupada com {editingRows.length} equipamentos. Os equipamentos individuais são preservados; use “detalhar” na tabela para conferi-los.
+            </div>
+          ) : <>
           <Field label="Equipamento que saiu">
             <Select value={draft.outgoingId || "none"} onValueChange={(value) => setDraft({ ...draft, outgoingId: value === "none" ? "" : value })}>
               <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{branchEquipment.map((item) => <SelectItem key={item.id} value={item.id}>{equipmentName(item)}</SelectItem>)}</SelectContent>
@@ -2444,14 +2550,15 @@ function MovementTable({
               <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{branchEquipment.map((item) => <SelectItem key={item.id} value={item.id}>{equipmentName(item)}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
+          </>}
           <Field label="Quantidade colocada"><Input type="number" min="0" step="1" value={draft.placed} onChange={(event) => setDraft({ ...draft, placed: event.target.value })} /></Field>
           <Field label="Quantidade removida"><Input type="number" min="0" step="1" value={draft.removed} onChange={(event) => setDraft({ ...draft, removed: event.target.value })} /></Field>
           <Field label="Peso (kg)"><Input type="number" min="0" step="0.001" value={draft.weight} onChange={(event) => setDraft({ ...draft, weight: event.target.value })} /></Field>
           <Field label="Observação"><Input value={draft.observation} onChange={(event) => setDraft({ ...draft, observation: event.target.value })} /></Field>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
-          <Button type="button" disabled={savingId === editing?.id} onClick={saveEditor}>{savingId === editing?.id ? "Salvando…" : "Salvar movimentação"}</Button>
+          <Button type="button" variant="outline" onClick={() => { setEditing(null); setEditingRows([]); }}>Cancelar</Button>
+          <Button type="button" disabled={editingRows.some((row) => savingId === row.id)} onClick={saveEditor}>{editingRows.some((row) => savingId === row.id) ? "Salvando…" : "Salvar movimentação"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
