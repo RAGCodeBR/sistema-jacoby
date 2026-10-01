@@ -1868,6 +1868,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   </div>
                 </div>
               </Card>
+              <ServiceRateOverridesPanel
+                clientId={clientId}
+                services={serviceCatalog}
+                companies={outsourcedCompanies}
+                branches={branches.filter((branch) => branch.is_active)}
+              />
               <ActionTable
                 headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
                 rows={equipment
@@ -2002,12 +2008,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     </Button>
                   </div>,
                 ])}
-              />
-              <ServiceRateOverridesPanel
-                clientId={clientId}
-                services={serviceCatalog}
-                companies={outsourcedCompanies}
-                branches={branches.filter((branch) => branch.is_active)}
               />
             </TabsContent>
             <TabsContent value="residuos" className="space-y-4">
