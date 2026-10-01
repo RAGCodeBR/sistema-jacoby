@@ -46,6 +46,15 @@ type Cycle = {
   finalized_at: string | null;
   client_portal_visible: boolean;
 };
+type ResidueEmission = {
+  id: string;
+  cycle_id: string;
+  waste_residue_id: string;
+  sequence: number;
+  display_number: string;
+  finalized_at: string;
+  client_portal_visible: boolean;
+};
 type Placement = {
   id: string;
   cycle_id: string | null;
@@ -281,6 +290,18 @@ export function BillingV2Module() {
   const cyclesQuery = query<Cycle>(["billing-v2-cycles", clientId], "billing_v2_cycles", (q) =>
     q.select("*").eq("client_id", clientId).order("created_at", { ascending: false }),
   );
+  const residueEmissionsQuery = useQuery({
+    queryKey: ["billing-v2-residue-emissions", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_v2_residue_emissions" as any) as any)
+        .select("id,cycle_id,waste_residue_id,sequence,display_number,finalized_at,client_portal_visible,billing_v2_cycles!inner(client_id)")
+        .eq("billing_v2_cycles.client_id", clientId)
+        .order("finalized_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as ResidueEmission[];
+    },
+  });
   const recentCyclesQuery = useQuery({
     queryKey: ["billing-v2-recent"],
     queryFn: async () => {
@@ -910,18 +931,50 @@ export function BillingV2Module() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const ensureResidueEmission = async () => {
+    if (!cycleId || residueFilterId === "all" || !cycle) throw Error("Selecione um resíduo para emitir este recorte.");
+    const existing = (residueEmissionsQuery.data || [])
+      .filter((item) => item.cycle_id === cycleId && item.waste_residue_id === residueFilterId)
+      .sort((a, b) => b.sequence - a.sequence)[0];
+    if (existing) return existing;
+    const sequence = Math.max(
+      0,
+      ...(residueEmissionsQuery.data || [])
+        .filter((item) => item.cycle_id === cycleId)
+        .map((item) => Number(item.sequence || 0)),
+    ) + 1;
+    const displayNumber = `${String(cycle.bulletin_number || 0).padStart(3, "0")}.${sequence}`;
+    const { data, error } = await (supabase.from("billing_v2_residue_emissions" as any) as any)
+      .insert({
+        cycle_id: cycleId,
+        waste_residue_id: residueFilterId,
+        sequence,
+        display_number: displayNumber,
+        finalized_at: new Date().toISOString(),
+      })
+      .select("id,cycle_id,waste_residue_id,sequence,display_number,finalized_at,client_portal_visible")
+      .single();
+    if (error) throw error;
+    return data as ResidueEmission;
+  };
   const finalizeCycle = useMutation({
     mutationFn: async () => {
       if (!cycleId) throw Error("Abra um boletim antes de finalizá-lo.");
+      if (residueFilterId !== "all") {
+        const emission = await ensureResidueEmission();
+        return { displayNumber: emission.display_number, residueEmission: true };
+      }
       const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .update({ status: "closed", finalized_at: new Date().toISOString() })
         .eq("id", cycleId);
       if (error) throw error;
+      return { residueEmission: false };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
-      toast.success("Boletim finalizado. Ele continuará disponível para edição e reimpressão.");
+      void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+      toast.success(result.residueEmission ? `Emissão #${result.displayNumber} finalizada para o resíduo selecionado.` : "Boletim finalizado. Ele continuará disponível para edição e reimpressão.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -937,6 +990,19 @@ export function BillingV2Module() {
       void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       toast.success(variables.visible ? "Boletim publicado no portal do cliente." : "Boletim removido do portal do cliente.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const setResidueEmissionPortalVisibility = useMutation({
+    mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
+      const { error } = await (supabase.from("billing_v2_residue_emissions" as any) as any)
+        .update({ client_portal_visible: visible })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+      toast.success(variables.visible ? "Emissão publicada no portal do cliente." : "Emissão removida do portal do cliente.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1012,6 +1078,7 @@ export function BillingV2Module() {
     branches.find((item) => item.id === id) || recentBranches.find((item) => item.id === id);
   const branchName = (id?: string | null) => branch(id || "")?.name || "Pátio não informado";
   const clientCycles = cyclesQuery.data || [];
+  const residueEmissions = residueEmissionsQuery.data || [];
   const recentCycles = recentCyclesQuery.data || [];
   const openRecentCycle = (item: Cycle) => {
     setClientId(item.client_id);
@@ -1034,12 +1101,13 @@ export function BillingV2Module() {
       )
     );
   }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
-  const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string; download?: boolean }) => {
+  const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string; bulletinLabel?: string; download?: boolean }) => {
     const printableCycle = options?.targetCycle || cycle;
     const pdfPlacements = options?.placements || filteredPlacements;
     const pdfMovements = options?.movements || filteredMovements;
     const pdfServices = options?.services || filteredServices;
     const pdfResidueId = options?.includeResidue ?? residueFilterId;
+    const printableBulletinNumber = options?.bulletinLabel || bulletinNumber(printableCycle?.bulletin_number);
     const pdfClientName = clients.find((item) => item.id === printableCycle?.client_id)?.name || clientName;
     const pdfResidueName = pdfResidueId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === pdfResidueId)?.name || "Resíduo selecionado";
     const pdfIssuerCompany = outsourcedCompanies.find((company) => company.id === printableCycle?.outsourced_company_id);
@@ -1082,7 +1150,7 @@ export function BillingV2Module() {
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.text(`Período: ${new Date(`${printableCycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${printableCycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
-      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${bulletinNumber(printableCycle.bulletin_number)}`, 105, 29, { align: "center" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${printableBulletinNumber}`, 105, 29, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(13);
       const clientHeaderMaxWidth = pdfDocumentThirdParty?.logo_url ? 96 : 138;
       const clientHeaderName = (() => {
@@ -1216,7 +1284,7 @@ export function BillingV2Module() {
       items.forEach((item, itemIndex) => {
         if (y + 10 > 266) {
           doc.addPage();
-          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${bulletinNumber(printableCycle.bulletin_number)} · ITENS`);
+          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${printableBulletinNumber} · ITENS`);
           y = 23;
           drawItemsHeader();
         }
@@ -1243,7 +1311,7 @@ export function BillingV2Module() {
         if (y + observationHeight + 30 > 272) {
           doc.addPage();
           y = 18;
-          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${bulletinNumber(printableCycle.bulletin_number)} · OBSERVAÇÕES E TOTAL`);
+          drawContinuationTitle(`CONTINUAÇÃO · BOLETIM ${printableBulletinNumber} · OBSERVAÇÕES E TOTAL`);
         }
         doc.setFillColor(255, 248, 225);
         doc.setDrawColor(224, 184, 72);
@@ -1276,10 +1344,32 @@ export function BillingV2Module() {
       doc.text("Jacoby Soluções Ambientais · Gestão responsável de resíduos", 20, 283);
       doc.text("Soluções que respeitam o meio ambiente.", 196, 283, { align: "right" });
     }
-    const fileName = `boletim-${bulletinNumber(printableCycle.bulletin_number).replace("#", "")}-${pdfClientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
+    const fileName = `boletim-${printableBulletinNumber.replace("#", "")}-${pdfClientName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
     if (options?.download === false) return { fileName, blob: doc.output("blob") };
     doc.save(fileName);
     return { fileName };
+  };
+  const filteredEmissionPreview = (() => {
+    if (!cycle || residueFilterId === "all") return null;
+    const existing = (residueEmissionsQuery.data || [])
+      .filter((item) => item.cycle_id === cycle.id && item.waste_residue_id === residueFilterId)
+      .sort((a, b) => b.sequence - a.sequence)[0];
+    if (existing) return existing.display_number;
+    const next = Math.max(0, ...(residueEmissionsQuery.data || []).filter((item) => item.cycle_id === cycle.id).map((item) => item.sequence)) + 1;
+    return `${String(cycle.bulletin_number).padStart(3, "0")}.${next}`;
+  })();
+  const generateCurrentPdf = async () => {
+    if (residueFilterId === "all") return generatePdf();
+    const emission = await ensureResidueEmission();
+    await qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+    return generatePdf({
+      targetCycle: cycle!,
+      placements: filteredPlacements,
+      movements: filteredMovements,
+      services: filteredServices,
+      includeResidue: residueFilterId,
+      bulletinLabel: `#${emission.display_number}`,
+    });
   };
   const resultCycles = clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId);
   const selectedResultCycles = resultCycles.filter((item) => selectedBulkCycleIds.includes(item.id));
@@ -1502,7 +1592,7 @@ export function BillingV2Module() {
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Número do boletim</p>
-                <p className="font-semibold text-primary">{bulletinNumber(cycle?.bulletin_number)}</p>
+                <p className="font-semibold text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</p>
               </div>
               <div className="lg:text-center">
                 <p className="text-xs text-muted-foreground">Total do boletim</p>
@@ -1519,8 +1609,8 @@ export function BillingV2Module() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
-              <Button onClick={() => void generatePdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF</Button>
+              <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={residueFilterId === "all" && cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{residueFilterId !== "all" ? `Finalizar emissão #${filteredEmissionPreview}` : cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
+              <Button onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{filteredEmissionPreview ? ` #${filteredEmissionPreview}` : ""}</Button>
             </div>
           </Card>
           <Tabs
@@ -1543,7 +1633,7 @@ export function BillingV2Module() {
               <TabsTrigger value="emitidos">Boletins emitidos</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
-            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Escolha quais boletins finalizados podem ser consultados pelo cliente no portal. Nenhum valor comercial é exibido lá.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{clientCycles.filter((item) => item.status === "closed").length ? clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{[...clientCycles.filter((item) => item.status === "closed").map((item) => ({ kind: "cycle" as const, item })), ...residueEmissions.map((item) => ({ kind: "residue" as const, item }))].length ? <>{clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>)}{residueEmissions.map((item) => { const parent = clientCycles.find((candidate) => candidate.id === item.cycle_id); return <tr key={item.id} className="border-b bg-muted/20"><td className="p-2 font-semibold">#{item.display_number}</td><td className="p-2">{branchName(parent?.branch_id)}</td><td className="p-2">{parent ? `${new Date(`${parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")} · ${residues.find((residue) => residue.id === item.waste_residue_id)?.name || "Resíduo"}` : "Resíduo filtrado"}</td><td className="p-2">{new Date(item.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>; })}</> : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="space-y-4">
               <Card className="p-4">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
