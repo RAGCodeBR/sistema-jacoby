@@ -1215,14 +1215,14 @@ export function BillingV2Module() {
         drawCompanyCard(108, "Terceirizada - Executora / Transportadora", pdfDocumentThirdParty?.trade_name || pdfDocumentThirdParty?.legal_name || "Não informada", companyDetails(pdfDocumentThirdParty || {}));
         y = companyY + 32;
       } else {
-        doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 25, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 25, 3, 3, "S");
+        doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 30, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 30, 3, 3, "S");
         doc.setFillColor(225, 241, 221); doc.roundedRect(14, companyY, 182, 7, 3, 3, "F");
         doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
         doc.text("JACOBY SOLUÇÕES AMBIENTAIS · GERENCIADORA DO BOLETIM", 20, companyY + 5);
         doc.setTextColor(39, 61, 45); doc.setFontSize(10); doc.text(jacoby.trade_name || jacoby.legal_name, 20, companyY + 13);
         doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
         doc.text(doc.splitTextToSize(companyDetails(jacoby) || "Dados cadastrais não informados.", 168).slice(0, 2), 20, companyY + 19);
-        y = companyY + 31;
+        y = companyY + 36;
       }
       const generatorName = pageBranch?.name || pdfClient?.trade_name || pdfClient?.legal_name || `${pdfClientName} (Matriz)`;
       const generatorDetails = pageBranch
