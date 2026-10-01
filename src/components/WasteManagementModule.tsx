@@ -141,7 +141,7 @@ const money = (v: number) =>
 const n = (v: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(v || 0);
 const capacityUnitLabel = (unit: string) =>
-  ({ m3: "m³", tonelada: "Toneladas", litros: "Litros", kg: "KG", granel: "Granel" })[unit] || unit;
+  ({ m3: "m³", metro: "m", tonelada: "Toneladas", litros: "Litros", kg: "KG", unidade: "un.", granel: "Granel" })[unit] || unit;
 const optionKey = (value: string) =>
   value
     .normalize("NFD")
@@ -1777,9 +1777,11 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="m3">Metro cúbico (m³)</SelectItem>
+                          <SelectItem value="metro">Metro (m)</SelectItem>
                           <SelectItem value="tonelada">Toneladas</SelectItem>
                           <SelectItem value="litros">Litros</SelectItem>
                           <SelectItem value="kg">KG</SelectItem>
+                          <SelectItem value="unidade">Unidade (un.)</SelectItem>
                           <SelectItem value="granel">Granel</SelectItem>
                         </SelectContent>
                       </Select>
