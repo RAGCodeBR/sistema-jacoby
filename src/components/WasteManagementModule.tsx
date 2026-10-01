@@ -1631,12 +1631,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               </div>,
             ])}
           />
-          <ServiceRateOverridesPanel
-            clientId={clientId}
-            services={serviceCatalog}
-            companies={outsourcedCompanies}
-            branches={branches.filter((branch) => branch.is_active)}
-          />
         </TabsContent>
         <TabsContent value="servicos" className="space-y-4">
           <Card className="p-4">
@@ -2008,6 +2002,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     </Button>
                   </div>,
                 ])}
+              />
+              <ServiceRateOverridesPanel
+                clientId={clientId}
+                services={serviceCatalog}
+                companies={outsourcedCompanies}
+                branches={branches.filter((branch) => branch.is_active)}
               />
             </TabsContent>
             <TabsContent value="residuos" className="space-y-4">
@@ -3565,9 +3565,9 @@ function ServiceRateOverridesPanel({
     id ? branches.find((branch) => branch.id === id)?.name || "Filial/pátio" : "Todas as filiais/pátios";
   return (
     <Card className="p-4">
-      <h2 className="font-semibold">Valores por empresa e filial/pátio</h2>
+      <h2 className="font-semibold">Valores por cliente, empresa e filial/pátio</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Use esta regra quando o mesmo serviço tiver outro valor para uma terceirizada ou unidade. No BM, o sistema prioriza filial + empresa, depois empresa, filial e por fim o valor geral do cliente.
+        O cliente selecionado acima é a base da regra. Use esta configuração quando o mesmo serviço tiver outro valor para uma terceirizada ou filial/pátio. No BM, o sistema prioriza filial + empresa, depois empresa, filial e por fim o valor geral do cliente.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Field label="Serviço">
