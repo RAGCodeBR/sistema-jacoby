@@ -104,6 +104,13 @@ type OutsourcedCompanyService = {
   waste_services?: { id: string; name: string | null; active: boolean } | null;
 };
 type ClientServiceRate = { client_id: string; waste_service_id: string; default_rate: number };
+type ClientServiceRateOverride = {
+  client_id: string;
+  waste_service_id: string;
+  outsourced_company_id: string | null;
+  branch_id: string | null;
+  default_rate: number;
+};
 type CycleService = {
   id: string; cycle_id: string; waste_service_id: string; outsourced_company_id: string | null; amount: number;
   quantity: number;
@@ -394,6 +401,17 @@ export function BillingV2Module() {
       return (data || []) as ClientServiceRate[];
     },
   });
+  const clientServiceRateOverridesQuery = useQuery({
+    queryKey: ["billing-v2-client-service-rate-overrides", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_client_service_rate_overrides" as any) as any)
+        .select("client_id,waste_service_id,outsourced_company_id,branch_id,default_rate")
+        .eq("client_id", clientId);
+      if (error) throw error;
+      return (data || []) as ClientServiceRateOverride[];
+    },
+  });
   const companyProfileQuery = useQuery({
     queryKey: ["company-profile"],
     queryFn: async () => {
@@ -480,6 +498,7 @@ export function BillingV2Module() {
     outsourcedCompanies = outsourcedCompaniesQuery.data || [],
     outsourcedCompanyServices = outsourcedCompanyServicesQuery.data || [],
     clientServiceRates = clientServiceRatesQuery.data || [],
+    clientServiceRateOverrides = clientServiceRateOverridesQuery.data || [],
     cycleServices = cycleServicesQuery.data || [],
     previousClosedCycle = previousClosedCycleQuery.data || null,
     previousClosedPlacements = previousClosedPlacementsQuery.data || [],
@@ -498,8 +517,19 @@ export function BillingV2Module() {
       .filter((service, index, all) => all.findIndex((item) => item.id === service.id) === index)
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [clientServices, outsourcedCompanyServices]);
-  const serviceAmountForClient = (serviceId: string) =>
-    Number(clientServiceRates.find((rate) => rate.waste_service_id === serviceId)?.default_rate || services.find((service) => service.id === serviceId)?.default_rate || 0);
+  const serviceAmountForClient = (serviceId: string) => {
+    const branchId = cycle?.branch_id || null;
+    const companyId = cycle?.issuer_type === "outsourced" ? cycle.outsourced_company_id || null : null;
+    const scoped = clientServiceRateOverrides.filter((rate) => rate.waste_service_id === serviceId);
+    const exact = scoped.find((rate) => rate.branch_id === branchId && rate.outsourced_company_id === companyId);
+    const company = companyId ? scoped.find((rate) => !rate.branch_id && rate.outsourced_company_id === companyId) : undefined;
+    const branch = branchId ? scoped.find((rate) => rate.branch_id === branchId && !rate.outsourced_company_id) : undefined;
+    return Number(
+      exact?.default_rate ?? company?.default_rate ?? branch?.default_rate ??
+      clientServiceRates.find((rate) => rate.waste_service_id === serviceId)?.default_rate ??
+      services.find((service) => service.id === serviceId)?.default_rate ?? 0,
+    );
+  };
   const residuesForBranch = (branchId: string) =>
     activeResidues.filter((item) => !item.branch_id || item.branch_id === branchId);
   const activePlacementsAtBranch = useMemo(

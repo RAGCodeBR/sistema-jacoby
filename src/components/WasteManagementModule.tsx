@@ -127,6 +127,14 @@ type OutsourcedTreatmentCommissionTemplateRate = {
   jacoby_treatment_rate: number | null;
 };
 type ClientServiceRate = { client_id: string; waste_service_id: string; default_rate: number };
+type ClientServiceRateOverride = {
+  id: string;
+  client_id: string;
+  waste_service_id: string;
+  outsourced_company_id: string | null;
+  branch_id: string | null;
+  default_rate: number;
+};
 type ReportService = { id: string; waste_service_id: string; rate: number; excluded: boolean };
 type Report = {
   id: string;
@@ -1622,6 +1630,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </Button>
               </div>,
             ])}
+          />
+          <ServiceRateOverridesPanel
+            clientId={clientId}
+            services={serviceCatalog}
+            companies={outsourcedCompanies}
+            branches={branches.filter((branch) => branch.is_active)}
           />
         </TabsContent>
         <TabsContent value="servicos" className="space-y-4">
@@ -3461,6 +3475,146 @@ function BillingTable({
     </Card>
   );
 }
+function ServiceRateOverridesPanel({
+  clientId,
+  services,
+  companies,
+  branches,
+}: {
+  clientId: string;
+  services: Pick<Service, "id" | "name" | "active">[];
+  companies: OutsourcedCompany[];
+  branches: Branch[];
+}) {
+  const qc = useQueryClient();
+  const [serviceId, setServiceId] = useState("");
+  const [companyId, setCompanyId] = useState("all");
+  const [branchId, setBranchId] = useState("all");
+  const [rate, setRate] = useState("0");
+  const overridesQuery = useQuery({
+    queryKey: ["waste-client-service-rate-overrides", clientId],
+    enabled: Boolean(clientId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("waste_client_service_rate_overrides" as any) as any)
+        .select("id,client_id,waste_service_id,outsourced_company_id,branch_id,default_rate")
+        .eq("client_id", clientId);
+      if (error) throw error;
+      return (data || []) as ClientServiceRateOverride[];
+    },
+  });
+  const overrides = overridesQuery.data || [];
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["waste-client-service-rate-overrides", clientId] });
+    void qc.invalidateQueries({ queryKey: ["billing-v2-client-service-rate-overrides", clientId] });
+  };
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!serviceId) throw Error("Selecione o serviço.");
+      const parsedRate = Number(rate);
+      if (!Number.isFinite(parsedRate) || parsedRate < 0) throw Error("Informe um valor válido.");
+      const scopedCompanyId = companyId === "all" ? null : companyId;
+      const scopedBranchId = branchId === "all" ? null : branchId;
+      const existing = overrides.find(
+        (item) =>
+          item.waste_service_id === serviceId &&
+          item.outsourced_company_id === scopedCompanyId &&
+          item.branch_id === scopedBranchId,
+      );
+      const query = supabase.from("waste_client_service_rate_overrides" as any) as any;
+      const { error } = existing
+        ? await query.update({ default_rate: parsedRate }).eq("id", existing.id)
+        : await query.insert({
+            client_id: clientId,
+            waste_service_id: serviceId,
+            outsourced_company_id: scopedCompanyId,
+            branch_id: scopedBranchId,
+            default_rate: parsedRate,
+          });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Valor específico salvo.");
+      setServiceId("");
+      setCompanyId("all");
+      setBranchId("all");
+      setRate("0");
+      refresh();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase.from("waste_client_service_rate_overrides" as any) as any)
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Valor específico removido.");
+      refresh();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const labelCompany = (id: string | null) =>
+    id
+      ? companies.find((company) => company.id === id)?.trade_name ||
+        companies.find((company) => company.id === id)?.legal_name ||
+        "Terceirizada"
+      : "Todas as empresas";
+  const labelBranch = (id: string | null) =>
+    id ? branches.find((branch) => branch.id === id)?.name || "Filial/pátio" : "Todas as filiais/pátios";
+  return (
+    <Card className="p-4">
+      <h2 className="font-semibold">Valores por empresa e filial/pátio</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Use esta regra quando o mesmo serviço tiver outro valor para uma terceirizada ou unidade. No BM, o sistema prioriza filial + empresa, depois empresa, filial e por fim o valor geral do cliente.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <Field label="Serviço">
+          <Select value={serviceId} onValueChange={setServiceId}>
+            <SelectTrigger><SelectValue placeholder="Selecionar serviço" /></SelectTrigger>
+            <SelectContent>{services.map((service) => <SelectItem key={service.id} value={service.id}>{service.name}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        <Field label="Empresa terceirizada">
+          <Select value={companyId} onValueChange={setCompanyId}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as empresas</SelectItem>
+              {companies.map((company) => <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Filial ou pátio">
+          <Select value={branchId} onValueChange={setBranchId}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as filiais/pátios</SelectItem>
+              {branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Valor unitário">
+          <Input type="number" min="0" step="0.01" value={rate} onChange={(event) => setRate(event.target.value)} />
+        </Field>
+        <Button className="self-end" onClick={() => save.mutate()} disabled={save.isPending}>Salvar valor</Button>
+      </div>
+      <ActionTable
+        headers={["Serviço", "Empresa", "Filial/pátio", "Valor unitário", "Ações"]}
+        rows={overrides.map((item) => [
+          services.find((service) => service.id === item.waste_service_id)?.name || "Serviço removido",
+          labelCompany(item.outsourced_company_id),
+          labelBranch(item.branch_id),
+          money(item.default_rate),
+          <Button size="icon" variant="ghost" title="Excluir valor específico" onClick={() => remove.mutate(item.id)}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>,
+        ])}
+      />
+    </Card>
+  );
+}
+
 function CommissionSettingsPanel({
   clientId,
   residues,
