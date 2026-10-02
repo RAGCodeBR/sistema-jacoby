@@ -140,9 +140,11 @@ function FinancialControlPage() {
   const cyclesQuery = useQuery({
     queryKey: ["outsourced-financial-cycles"],
     queryFn: async () => {
-      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any).select(
-        "id,client_id,branch_id,bulletin_number,issuer_type,status,period_start,period_end,finalized_at",
-      );
+      // BMs do RAG pertencem exclusivamente ao ambiente de demonstração e não
+      // podem compor nenhuma visão ou total do Financeiro interno.
+      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .select("id,client_id,branch_id,bulletin_number,issuer_type,status,period_start,period_end,finalized_at")
+        .eq("is_demo", false);
       if (error) throw error;
       return (data || []) as Cycle[];
     },
@@ -228,6 +230,7 @@ function FinancialControlPage() {
         })
         .filter(
           (row) =>
+            Boolean(row.cycle) &&
             (companyFilter === "all" || row.item.outsourced_company_id === companyFilter) &&
             (statusFilter === "all" || (statusFilter === "received" ? paymentIsReceived(row.item) : !paymentIsReceived(row.item))),
         ),
@@ -263,7 +266,10 @@ function FinancialControlPage() {
       const company = companies.find((value) => value.id === item.outsourced_company_id);
       const residue = residues.find((value) => value.id === item.waste_residue_id);
       return { item, cycle, clientName: client?.name || "", companyName: company?.trade_name || company?.legal_name || "", residueName: residue?.name || "" };
-    }).filter((row) => companyFilter === "all" || row.item.outsourced_company_id === companyFilter),
+    }).filter((row) =>
+      Boolean(row.cycle) &&
+      (companyFilter === "all" || row.item.outsourced_company_id === companyFilter),
+    ),
     [movementCommissionsQuery.data, cycles, clients, companies, residues, companyFilter],
   );
   const movementCommissionTotal = movementCommissionRows.reduce((total, row) => total + Number(row.item.net_commission_amount || 0), 0);
