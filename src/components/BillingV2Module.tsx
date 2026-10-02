@@ -556,6 +556,15 @@ export function BillingV2Module() {
     );
     return Number(effective?.default_treatment_rate ?? selected.default_treatment_rate ?? 0);
   };
+  const residuesForCycleBranch = useMemo(
+    () => residuesForBranch(cycle?.branch_id || ""),
+    [residues, cycle?.branch_id],
+  );
+  useEffect(() => {
+    if (residueFilterId !== "all" && !residuesForCycleBranch.some((item) => item.id === residueFilterId)) {
+      setResidueFilterId("all");
+    }
+  }, [residueFilterId, residuesForCycleBranch]);
   const activePlacementsAtBranch = useMemo(
     () =>
       placements.filter(
@@ -1709,7 +1718,7 @@ export function BillingV2Module() {
                   <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os resíduos</SelectItem>
-                    {activeResidues.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
+                    {residuesForCycleBranch.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
