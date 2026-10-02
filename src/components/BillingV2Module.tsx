@@ -236,6 +236,8 @@ export function BillingV2Module() {
   const [createOpen, setCreateOpen] = useState(false);
   const [resultStatusFilter, setResultStatusFilter] = useState<"all" | "draft" | "closed">("draft");
   const [treatmentCompanyId, setTreatmentCompanyId] = useState("");
+  const [expandedBMs, setExpandedBMs] = useState<string[]>([]);
+  const [bmSearch, setBmSearch] = useState("");
   const savingMovementRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
@@ -322,6 +324,21 @@ export function BillingV2Module() {
         .eq("is_demo", false)
         .order("created_at", { ascending: false })
         .limit(8);
+      if (error) throw error;
+      return (data || []) as Cycle[];
+    },
+  });
+  const bmSearchNumber = Number((bmSearch.match(/\d+/g) || []).join(""));
+  const bmSearchQuery = useQuery({
+    queryKey: ["billing-v2-search", bmSearchNumber],
+    enabled: Number.isFinite(bmSearchNumber) && bmSearchNumber > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .select("*")
+        .eq("is_demo", false)
+        .eq("bulletin_number", bmSearchNumber)
+        .order("created_at", { ascending: false })
+        .limit(20);
       if (error) throw error;
       return (data || []) as Cycle[];
     },
@@ -1293,6 +1310,23 @@ export function BillingV2Module() {
   const branchName = (id?: string | null) => branch(id || "")?.name || "Matriz (sem filial/pátio)";
   const clientCycles = cyclesQuery.data || [];
   const residueEmissions = residueEmissionsQuery.data || [];
+  const emittedGroups = useMemo(() => {
+    const map = new Map<string, { cycleId: string; major: number; parent?: Cycle; emissions: ResidueEmission[] }>();
+    clientCycles.filter((item) => item.status === "closed").forEach((item) => {
+      map.set(item.id, { cycleId: item.id, major: Number(item.bulletin_number || 0), parent: item, emissions: [] });
+    });
+    residueEmissions.forEach((item) => {
+      const existing = map.get(item.cycle_id);
+      if (existing) existing.emissions.push(item);
+      else {
+        const parent = clientCycles.find((candidate) => candidate.id === item.cycle_id);
+        map.set(item.cycle_id, { cycleId: item.cycle_id, major: Number(parent?.bulletin_number || 0), parent, emissions: [item] });
+      }
+    });
+    const groups = Array.from(map.values());
+    groups.forEach((group) => group.emissions.sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0)));
+    return groups.sort((a, b) => a.major - b.major);
+  }, [clientCycles, residueEmissions]);
   const finalizedResidueIds = new Set(residueEmissions.filter((item) => item.cycle_id === cycleId).map((item) => item.waste_residue_id));
   const cycleResidueIds = Array.from(new Set([
     ...placements.filter((item) => item.waste_residue_id).map((item) => item.waste_residue_id as string),
@@ -1303,6 +1337,8 @@ export function BillingV2Module() {
   const recentCycles = (recentCyclesQuery.data || [])
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
     .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
+  const bmSearching = Number.isFinite(bmSearchNumber) && bmSearchNumber > 0;
+  const recentDisplayCycles = bmSearching ? (bmSearchQuery.data || []) : recentCycles;
   const openRecentCycle = (item: Cycle) => {
     setClientId(item.client_id);
     setCycleBranchId(item.branch_id || "");
@@ -1612,7 +1648,7 @@ export function BillingV2Module() {
     .filter((item) => !cycleBranchId || item.branch_id === cycleBranchId)
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
     .slice()
-    .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
+    .sort((a, b) => ((a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0)) || (Number(a.bulletin_number || 0) - Number(b.bulletin_number || 0)));
   const selectedResultCycles = resultCycles.filter((item) => selectedBulkCycleIds.includes(item.id));
   const selectedEditableCycles = selectedResultCycles.filter((item) => item.status !== "closed");
   const selectedPrintableCycles = selectedResultCycles.filter((item) => item.status === "closed");
@@ -1780,13 +1816,17 @@ export function BillingV2Module() {
       {!cycleId ? (
         <div className="flex flex-col gap-6">
           <Card className="order-2 p-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="font-semibold">Boletins recentes</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Abra rapidamente um boletim de qualquer cliente.</p>
               </div>
-              <span className="text-xs text-muted-foreground">Últimos 8 registros</span>
+              <div className="flex items-center gap-2">
+                <div className="w-60"><Input value={bmSearch} onChange={(event) => setBmSearch(event.target.value)} placeholder="Buscar BM por número (ex: 18)" className="h-9" /></div>
+                {bmSearch ? <Button variant="ghost" size="sm" onClick={() => setBmSearch("")}>Limpar</Button> : <span className="whitespace-nowrap text-xs text-muted-foreground">Últimos 8 registros</span>}
+              </div>
             </div>
+            {!bmSearching && (
             <div className="mt-4 inline-flex rounded-lg border bg-muted/40 p-0.5 text-sm">
               {([["all", "Todos"], ["draft", "Em edição"], ["closed", "Finalizados"]] as const).map(([value, label]) => (
                 <button
@@ -1799,9 +1839,10 @@ export function BillingV2Module() {
                 </button>
               ))}
             </div>
+            )}
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
-                {recentCycles.length ? recentCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-52 truncate" title={clients.find((client) => client.id === item.client_id)?.name || "Cliente"}>{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</span></td><td className="p-2"><span className="block max-w-52 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Nenhum boletim criado ainda.</td></tr>}
+                {recentDisplayCycles.length ? recentDisplayCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold text-primary">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-52 truncate" title={clients.find((client) => client.id === item.client_id)?.name || "Cliente"}>{clients.find((client) => client.id === item.client_id)?.name || "Cliente"}</span></td><td className="p-2"><span className="block max-w-52 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><Button variant="outline" size="sm" onClick={() => openRecentCycle(item)}><Pencil className="mr-2 h-3.5 w-3.5" />Abrir</Button></td></tr>) : <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">{bmSearching ? "Nenhum boletim encontrado com esse número." : "Nenhum boletim criado ainda."}</td></tr>}
               </tbody></table>
             </div>
           </Card>
@@ -1870,7 +1911,7 @@ export function BillingV2Module() {
               <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm">Emissões</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
-            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{[...clientCycles.filter((item) => item.status === "closed").map((item) => ({ kind: "cycle" as const, item })), ...residueEmissions.map((item) => ({ kind: "residue" as const, item }))].length ? <>{clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver boletim ${bulletinNumber(item.bulletin_number)}`} aria-label={`Ver boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void viewBulletin(item, "all")}><Eye className="h-4 w-4" /></Button><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></div></td></tr>)}{residueEmissions.map((item) => { const parent = clientCycles.find((candidate) => candidate.id === item.cycle_id); return <tr key={item.id} className="border-b bg-muted/20"><td className="p-2 font-semibold">#{item.display_number}</td><td className="p-2">{branchName(parent?.branch_id)}</td><td className="p-2">{parent ? `${new Date(`${parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")} · ${residues.find((residue) => residue.id === item.waste_residue_id)?.name || "Resíduo"}` : "Resíduo filtrado"}</td><td className="p-2">{new Date(item.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver emissão #${item.display_number}`} aria-label={`Ver emissão #${item.display_number}`} disabled={!parent} onClick={() => { if (parent) void viewBulletin(parent, item.waste_residue_id, `#${item.display_number}`); }}><Eye className="h-4 w-4" /></Button><label className="inline-flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${item.display_number}`} aria-label={`Excluir emissão #${item.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${item.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: item.id, cycleId: item.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>; })}</> : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{emittedGroups.length ? emittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver boletim ${headerNumber}`} aria-label={`Ver boletim ${headerNumber}`} onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="h-4 w-4" /></Button>{closedParent ? <label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!group.parent.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: Boolean(checked) })} />{group.parent.client_portal_visible ? "Publicado" : "Não publicado"}</label> : <span className="text-sm text-muted-foreground">Em edição</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver emissão #${em.display_number}`} aria-label={`Ver emissão #${em.display_number}`} disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="h-4 w-4" /></Button><label className="inline-flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={!!em.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: Boolean(checked) })} />{em.client_portal_visible ? "Publicado" : "Não publicado"}</label><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : null}</Fragment>; }) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
               <Card className="p-5 xl:sticky xl:top-40">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
