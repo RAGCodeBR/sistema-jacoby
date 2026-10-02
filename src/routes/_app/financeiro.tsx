@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_app/financeiro")({ component: FinancialControlPage });
 
@@ -55,7 +56,14 @@ type FinancialService = {
   received_on: string | null;
   financial_notes: string | null;
 };
-type Cycle = { id: string; client_id: string; branch_id: string | null; bulletin_number: number };
+type Cycle = {
+  id: string; client_id: string; branch_id: string | null; bulletin_number: number;
+  issuer_type: "jacoby" | "outsourced"; status: "draft" | "closed";
+  period_start: string; period_end: string; finalized_at: string | null;
+};
+type BillingPlacement = { cycle_id: string; quantity: number; monthly_rental_rate: number };
+type BillingMovement = { cycle_id: string; confirmed: boolean; removed_quantity: number; weight_kg: number; exchange_rate: number; treatment_rate: number };
+type BillingServiceAmount = { cycle_id: string; amount: number };
 type MovementCommission = {
   id: string;
   cycle_id: string;
@@ -104,6 +112,7 @@ function FinancialControlPage() {
   const { data: clients = [] } = useClients();
   const [companyFilter, setCompanyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [financialView, setFinancialView] = useState("total");
   const [editing, setEditing] = useState<FinancialService | null>(null);
   const [form, setForm] = useState(emptyForm);
   const servicesQuery = useQuery({
@@ -132,10 +141,28 @@ function FinancialControlPage() {
     queryKey: ["outsourced-financial-cycles"],
     queryFn: async () => {
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any).select(
-        "id,client_id,branch_id,bulletin_number",
+        "id,client_id,branch_id,bulletin_number,issuer_type,status,period_start,period_end,finalized_at",
       );
       if (error) throw error;
       return (data || []) as Cycle[];
+    },
+  });
+  const directBillingDataQuery = useQuery({
+    queryKey: ["jacoby-direct-billing-data"],
+    queryFn: async () => {
+      const [placements, movements, services] = await Promise.all([
+        (supabase.from("billing_v2_placements" as any) as any).select("cycle_id,quantity,monthly_rental_rate"),
+        (supabase.from("billing_v2_movements" as any) as any).select("cycle_id,confirmed,removed_quantity,weight_kg,exchange_rate,treatment_rate"),
+        (supabase.from("billing_v2_cycle_services" as any) as any).select("cycle_id,amount"),
+      ]);
+      if (placements.error) throw placements.error;
+      if (movements.error) throw movements.error;
+      if (services.error) throw services.error;
+      return {
+        placements: (placements.data || []) as BillingPlacement[],
+        movements: (movements.data || []) as BillingMovement[],
+        services: (services.data || []) as BillingServiceAmount[],
+      };
     },
   });
   const companiesQuery = useQuery({
@@ -240,6 +267,28 @@ function FinancialControlPage() {
     [movementCommissionsQuery.data, cycles, clients, companies, residues, companyFilter],
   );
   const movementCommissionTotal = movementCommissionRows.reduce((total, row) => total + Number(row.item.net_commission_amount || 0), 0);
+  const directBillingRows = useMemo(() => {
+    const billingData = directBillingDataQuery.data;
+    if (!billingData) return [];
+    return cycles
+      .filter((cycle) => cycle.status === "closed" && cycle.issuer_type === "jacoby")
+      .map((cycle) => {
+        const rental = billingData.placements.filter((item) => item.cycle_id === cycle.id)
+          .reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.monthly_rental_rate || 0), 0);
+        const confirmed = billingData.movements.filter((item) => item.cycle_id === cycle.id && item.confirmed);
+        const exchange = confirmed.reduce((sum, item) => sum + Number(item.removed_quantity || 0) * Number(item.exchange_rate || 0), 0);
+        const treatment = confirmed.reduce((sum, item) => sum + Number(item.weight_kg || 0) * Number(item.treatment_rate || 0), 0);
+        const services = billingData.services.filter((item) => item.cycle_id === cycle.id)
+          .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const client = clients.find((item) => item.id === cycle.client_id);
+        const branch = branches.find((item) => item.id === cycle.branch_id);
+        return { cycle, clientName: client?.name || "", branchName: branch?.name || "Matriz", rental, exchange, treatment, services, total: rental + exchange + treatment + services };
+      })
+      .sort((a, b) => String(b.cycle.finalized_at || "").localeCompare(String(a.cycle.finalized_at || "")));
+  }, [cycles, clients, branches, directBillingDataQuery.data]);
+  const directBillingTotal = directBillingRows.reduce((total, row) => total + row.total, 0);
+  const totalCommissions = commissionTotal + movementCommissionTotal;
+  const consolidatedTotal = directBillingTotal + totalCommissions;
   const settleMovementCommission = useMutation({
     mutationFn: async (item: MovementCommission) => {
       const received = item.payment_status !== "received";
@@ -360,6 +409,28 @@ function FinancialControlPage() {
           </Select>
         </div>
       </Card>
+      <Tabs value={financialView} onValueChange={setFinancialView} className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto">
+          <TabsTrigger value="total">Total faturado</TabsTrigger>
+          <TabsTrigger value="jacoby">Faturado pela Jacoby</TabsTrigger>
+          <TabsTrigger value="comissoes">Comissões</TabsTrigger>
+        </TabsList>
+        <TabsContent value="total" className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Metric label="Faturado diretamente pela Jacoby" value={directBillingTotal} />
+            <Metric label="Comissões a receber" value={totalCommissions} />
+            <Metric label="Total faturado consolidado" value={consolidatedTotal} />
+          </div>
+          <Card className="overflow-hidden">
+            <div className="border-b p-4"><h2 className="font-semibold">Composição do total faturado</h2><p className="mt-1 text-sm text-muted-foreground">Soma do que a Jacoby emitiu diretamente com as comissões registradas no Financeiro.</p></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b bg-muted/30 text-left text-muted-foreground"><th className="p-3">Origem</th><th className="p-3">Descrição</th><th className="p-3 text-right">Valor</th></tr></thead><tbody><tr className="border-b"><td className="p-3 font-medium">Jacoby</td><td className="p-3">Boletins finalizados e emitidos pela Jacoby</td><td className="p-3 text-right font-medium">{money.format(directBillingTotal)}</td></tr><tr className="border-b"><td className="p-3 font-medium">Comissões de serviços</td><td className="p-3">Comissões configuradas nos serviços de terceirizadas</td><td className="p-3 text-right font-medium">{money.format(commissionTotal)}</td></tr><tr className="border-b"><td className="p-3 font-medium">Comissões de movimentações</td><td className="p-3">Locação, troca e tratamento emitidos por terceirizadas</td><td className="p-3 text-right font-medium">{money.format(movementCommissionTotal)}</td></tr></tbody><tfoot><tr className="bg-primary/10"><td className="p-3 font-bold" colSpan={2}>Total faturado</td><td className="p-3 text-right text-lg font-bold text-primary">{money.format(consolidatedTotal)}</td></tr></tfoot></table></div>
+          </Card>
+        </TabsContent>
+        <TabsContent value="jacoby" className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2"><Metric label="Faturado diretamente pela Jacoby" value={directBillingTotal} /><Metric label="Boletins Jacoby finalizados" value={directBillingRows.length} /></div>
+          <Card className="overflow-hidden"><div className="border-b p-4"><h2 className="font-semibold">Boletins faturados pela Jacoby</h2><p className="mt-1 text-sm text-muted-foreground">Valores calculados pelos lançamentos confirmados de locação, troca, tratamento e serviços de cada BM finalizado.</p></div>{directBillingDataQuery.isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando boletins...</p> : !directBillingRows.length ? <p className="p-10 text-center text-sm text-muted-foreground">Nenhum boletim finalizado emitido pela Jacoby.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-b bg-muted/30 text-left text-muted-foreground"><th className="p-3">Cliente / pátio</th><th className="p-3">BM</th><th className="p-3">Período</th><th className="p-3 text-right">Locação</th><th className="p-3 text-right">Troca</th><th className="p-3 text-right">Tratamento</th><th className="p-3 text-right">Serviços</th><th className="p-3 text-right">Total</th></tr></thead><tbody>{directBillingRows.map((row) => <tr key={row.cycle.id} className="border-b"><td className="p-3"><p className="font-medium">{row.clientName}</p><p className="text-muted-foreground">{row.branchName}</p></td><td className="p-3">#{String(row.cycle.bulletin_number || 0).padStart(3, "0")}</td><td className="p-3">{formatDate(row.cycle.period_start)} a {formatDate(row.cycle.period_end)}</td><td className="p-3 text-right">{money.format(row.rental)}</td><td className="p-3 text-right">{money.format(row.exchange)}</td><td className="p-3 text-right">{money.format(row.treatment)}</td><td className="p-3 text-right">{money.format(row.services)}</td><td className="p-3 text-right font-bold text-primary">{money.format(row.total)}</td></tr>)}</tbody></table></div>}</Card>
+        </TabsContent>
+        <TabsContent value="comissoes" className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="A receber das terceirizadas" value={totalOpen} />
         <Metric label="Recebido" value={totalReceived} />
@@ -490,6 +561,8 @@ function FinancialControlPage() {
         <div className="border-b p-4"><h2 className="font-semibold">Comissões de movimentações e tratamentos</h2><p className="mt-1 text-sm text-muted-foreground">Geradas automaticamente ao finalizar um BM emitido por terceirizada, conforme a configuração de comissionamento.</p></div>
         {movementCommissionsQuery.isLoading ? <p className="p-8 text-sm text-muted-foreground">Carregando comissões...</p> : !movementCommissionRows.length ? <p className="p-10 text-center text-sm text-muted-foreground">Nenhuma comissão de movimentação gerada ainda.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1200px] text-sm"><thead><tr className="border-b bg-muted/30 text-left text-muted-foreground"><th className="p-3">Cliente</th><th className="p-3">Terceirizada</th><th className="p-3">Tipo</th><th className="p-3">Resíduo</th><th className="p-3">Execução</th><th className="p-3">BM</th><th className="p-3">Base</th><th className="p-3">Comissão</th><th className="p-3">Abatimento</th><th className="p-3">A receber</th><th className="p-3">Recebimento</th><th className="p-3" /></tr></thead><tbody>{movementCommissionRows.map(({ item, cycle, clientName, companyName, residueName }) => <tr key={item.id} className="border-b"><td className="p-3">{clientName}</td><td className="p-3">{companyName}</td><td className="p-3">{{ rental: "Locação", exchange: "Troca", treatment: "Tratamento" }[item.source_type]}</td><td className="p-3">{residueName || "—"}</td><td className="p-3">{formatDate(item.execution_date)}</td><td className="p-3">#{String(cycle?.bulletin_number || 0).padStart(3, "0")}</td><td className="p-3">{money.format(Number(item.base_amount || 0))}</td><td className="p-3">{money.format(Number(item.gross_commission_amount || 0))}</td><td className="p-3">{money.format(Number(item.tax_withheld_amount || 0))}</td><td className="p-3 font-medium">{money.format(Number(item.net_commission_amount || 0))}</td><td className="p-3">{item.payment_status === "received" ? `Recebido ${formatDate(item.received_on)}` : "Aguardando"}</td><td className="p-3"><Button size="sm" variant="outline" disabled={settleMovementCommission.isPending} onClick={() => settleMovementCommission.mutate(item)}>{item.payment_status === "received" ? "Reabrir" : "Dar baixa"}</Button></td></tr>)}</tbody></table></div>}
       </Card>
+        </TabsContent>
+      </Tabs>
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
