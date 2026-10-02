@@ -1,7 +1,7 @@
 /** Cadastros do cliente alimentam diretamente o demonstrativo mensal. */
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FilePlus2, Package, Pencil, Scale, Trash2, Truck } from "lucide-react";
+import { Download, FilePlus2, Info, Package, Pencil, Scale, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { useClients } from "@/hooks/use-data";
@@ -1767,6 +1767,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               </TabsTrigger>
             </TabsList>
             <TabsContent value="equipamentos" className="space-y-4">
+              <BillingImpactNote>
+                <strong>Alimenta o Faturamento →</strong> o <strong>Valor da locação</strong> cadastrado aqui vira a linha <strong>Locação de equipamentos</strong> do BM. Os equipamentos também aparecem como opção nas abas <strong>Locação</strong> e <strong>Movimentações</strong> do boletim. O valor por troca fica na aba <strong>Troca</strong>.
+              </BillingImpactNote>
               <Card className="p-4">
                 <h2 className="font-semibold">
                   {editingEquipment ? "Editar equipamento" : "Novo equipamento"}
@@ -1941,6 +1944,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               />
             </TabsContent>
             <TabsContent value="servicos" className="space-y-4">
+              <BillingImpactNote>
+                <strong>Alimenta o Faturamento →</strong> os serviços e valores cadastrados aqui aparecem na aba <strong>Boletim</strong> do boletim (seção “Emissão e serviços terceirizados”) e entram na linha <strong>Serviços</strong> do total do BM.
+              </BillingImpactNote>
               <ServiceRateOverridesPanel
                 clientId={clientId}
                 services={serviceCatalog}
@@ -2030,9 +2036,15 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               />
             </TabsContent>
             <TabsContent value="residuos" className="space-y-4">
+              <BillingImpactNote>
+                <strong>Alimenta o Faturamento →</strong> o <strong>valor de tratamento por kg</strong> (por filial/pátio) vira a linha <strong>Tratamento de resíduos</strong> do BM, calculada como <strong>peso × valor</strong> e lançada nas <strong>Movimentações</strong>. Os resíduos também viram opção na Locação e Movimentações.
+              </BillingImpactNote>
               <ResidueBranchConfig clientId={clientId} branches={branches} residues={residues} onSaved={refreshClient} />
             </TabsContent>
             <TabsContent value="valores" className="space-y-4">
+              <BillingImpactNote>
+                <strong>Alimenta o Faturamento →</strong> o <strong>valor por troca</strong> de cada equipamento vira a linha <strong>Troca de equipamentos</strong> do BM, aplicado a cada troca confirmada nas <strong>Movimentações</strong>. Alterar aqui atualiza os BMs <strong>em edição</strong>; os já finalizados mantêm o valor da época.
+              </BillingImpactNote>
               <Card className="p-4">
                 <h2 className="font-semibold">Valor por troca</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -2121,6 +2133,9 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               </Card>
             </TabsContent>
             <TabsContent value="comissionamento" className="space-y-4">
+              <BillingImpactNote tone="amber">
+                <strong>Não entra no total nem no PDF do BM.</strong> As taxas de comissão cadastradas aqui alimentam o relatório de <strong>Comissões</strong> no <strong>Financeiro</strong> — calculadas automaticamente quando um BM emitido por <strong>empresa terceirizada</strong> é finalizado.
+              </BillingImpactNote>
               <CommissionSettingsPanel
                 clientId={clientId}
                 residues={residues}
@@ -3933,5 +3948,19 @@ function ServiceReportTable({
         </tbody>
       </table>
     </Card>
+  );
+}
+
+function BillingImpactNote({ children, tone = "primary" }: { children: ReactNode; tone?: "primary" | "amber" }) {
+  const box =
+    tone === "amber"
+      ? "border-amber-300 bg-amber-50 text-amber-900"
+      : "border-primary/20 bg-primary/5 text-muted-foreground";
+  const icon = tone === "amber" ? "text-amber-600" : "text-primary";
+  return (
+    <div className={`flex items-start gap-2.5 rounded-lg border p-3 text-sm ${box}`}>
+      <Info className={`mt-0.5 h-4 w-4 shrink-0 ${icon}`} />
+      <p className="leading-relaxed">{children}</p>
+    </div>
   );
 }

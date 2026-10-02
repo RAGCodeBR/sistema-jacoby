@@ -1,7 +1,7 @@
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileText, Pencil, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileText, Pencil, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import jacobyLogo from "@/assets/jacoby-logo-transparent.png";
 
 type Branch = { id: string; name: string; cnpj: string | null; address: string | null };
@@ -192,8 +193,8 @@ const logoAsDataUrl = async (url: string) => {
 
 function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`grid min-w-0 gap-1.5 ${className}`}>
-      <Label>{label}</Label>
+    <div className={`grid min-w-0 gap-2 ${className}`}>
+      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
       {children}
     </div>
   );
@@ -231,7 +232,9 @@ export function BillingV2Module() {
   });
   const [outgoingPlacementIds, setOutgoingPlacementIds] = useState<string[]>([]);
   const [incomingEquipmentIds, setIncomingEquipmentIds] = useState<string[]>([]);
-  const [continuePreviousSetup, setContinuePreviousSetup] = useState(true);
+  const [importPlacementIds, setImportPlacementIds] = useState<string[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [resultStatusFilter, setResultStatusFilter] = useState<"all" | "draft" | "closed">("draft");
   const savingMovementRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
@@ -504,6 +507,9 @@ export function BillingV2Module() {
     previousClosedCycle = previousClosedCycleQuery.data || null,
     previousClosedPlacements = previousClosedPlacementsQuery.data || [],
     companyProfile = companyProfileQuery.data || null;
+  useEffect(() => {
+    setImportPlacementIds((previousClosedPlacementsQuery.data || []).map((item) => item.id));
+  }, [previousClosedPlacementsQuery.data]);
   const activeResidues = residues.filter((item) => item.active);
   const clientHasNoBranches = Boolean(clientId && !branchesQuery.isLoading && !branches.length);
   const services = useMemo(() => {
@@ -575,6 +581,13 @@ export function BillingV2Module() {
       ),
     [placements, movementForm.branchId],
   );
+  const incomingEquipmentBase = useMemo(
+    () =>
+      equipment
+        .filter((item) => item.branch_id === movementForm.branchId)
+        .filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id)),
+    [equipment, movementForm.branchId, outgoingPlacementIds, activePlacementsAtBranch],
+  );
   const placementsForSelectedBranch = useMemo(
     () =>
       rentalBranchFilter
@@ -616,17 +629,18 @@ export function BillingV2Module() {
         .select("id")
         .single();
       if (error) throw error;
-      if (continuePreviousSetup && previousClosedCycle && cycleBranchId) {
+      if (importPlacementIds.length && previousClosedCycle && cycleBranchId) {
         const { data: sourcePlacements, error: sourceError } = await (supabase.from("billing_v2_placements" as any) as any)
-          .select("equipment_id,waste_residue_id,quantity,observation")
+          .select("id,equipment_id,waste_residue_id,quantity,observation")
           .eq("cycle_id", previousClosedCycle.id)
           .is("ended_on", null);
         if (sourceError) {
           await (supabase.from("billing_v2_cycles" as any) as any).delete().eq("id", data.id);
           throw sourceError;
         }
-        if (sourcePlacements?.length) {
-          const equipmentIds = sourcePlacements.map((item: Placement) => item.equipment_id);
+        const chosen = (sourcePlacements || []).filter((item: Placement) => importPlacementIds.includes(item.id));
+        if (chosen.length) {
+          const equipmentIds = chosen.map((item: Placement) => item.equipment_id);
           const { data: currentEquipment, error: equipmentError } = await (supabase.from("waste_equipment" as any) as any)
             .select("id,monthly_rental_rate")
             .in("id", equipmentIds);
@@ -636,7 +650,7 @@ export function BillingV2Module() {
           }
           const rates = new Map((currentEquipment || []).map((item: { id: string; monthly_rental_rate: number }) => [item.id, item.monthly_rental_rate]));
           const { error: copyError } = await (supabase.from("billing_v2_placements" as any) as any).insert(
-            sourcePlacements.map((item: Placement) => ({
+            chosen.map((item: Placement) => ({
               cycle_id: data.id,
               client_id: clientId,
               branch_id: cycleBranchId,
@@ -657,12 +671,13 @@ export function BillingV2Module() {
       return data.id as string;
     },
     onSuccess: (id) => {
+      setCreateOpen(false);
       setCycleId(id);
       setResidueFilterId("all");
       qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       setTab("locacoes");
-      toast.success(continuePreviousSetup && previousClosedCycle ? "Novo boletim aberto com os equipamentos que permaneceram no pátio." : "Novo boletim aberto vazio para edição.");
+      toast.success(importPlacementIds.length && previousClosedCycle && cycleBranchId ? "Novo boletim aberto com os equipamentos selecionados." : "Novo boletim aberto vazio para edição.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1184,7 +1199,9 @@ export function BillingV2Module() {
   const branchName = (id?: string | null) => branch(id || "")?.name || "Matriz (sem filial/pátio)";
   const clientCycles = cyclesQuery.data || [];
   const residueEmissions = residueEmissionsQuery.data || [];
-  const recentCycles = recentCyclesQuery.data || [];
+  const recentCycles = (recentCyclesQuery.data || [])
+    .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
+    .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
   const openRecentCycle = (item: Cycle) => {
     setClientId(item.client_id);
     setCycleBranchId(item.branch_id || "");
@@ -1484,7 +1501,11 @@ export function BillingV2Module() {
       bulletinLabel: `#${emission.display_number}`,
     });
   };
-  const resultCycles = clientCycles.filter((item) => !cycleBranchId || item.branch_id === cycleBranchId);
+  const resultCycles = clientCycles
+    .filter((item) => !cycleBranchId || item.branch_id === cycleBranchId)
+    .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
+    .slice()
+    .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
   const selectedResultCycles = resultCycles.filter((item) => selectedBulkCycleIds.includes(item.id));
   const selectedEditableCycles = selectedResultCycles.filter((item) => item.status !== "closed");
   const selectedPrintableCycles = selectedResultCycles.filter((item) => item.status === "closed");
@@ -1567,87 +1588,61 @@ export function BillingV2Module() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
-      <header>
-        <p className="text-sm font-medium text-primary">Portal do Cliente</p>
-        <h1 className="text-2xl font-bold">Faturamento</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cada boletim é um ciclo independente: registre locação, movimentações e destinação no período que fizer sentido e finalize quando estiver concluído.
-        </p>
-      </header>
-      <Card className="grid gap-3 p-4 md:grid-cols-4">
-        <Field label="Cliente">
-          <Select
-            value={clientId}
-            onValueChange={(value) => {
-              setClientId(value);
-              setCycleId("");
-              setCycleBranchId("");
-              setResidueFilterId("all");
-            }}
+    <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
+      {!cycleId && (
+        <header>
+          <p className="text-sm font-medium text-primary">Portal do Cliente</p>
+          <h1 className="text-2xl font-bold">Faturamento</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Cada boletim é um ciclo independente: registre locação, movimentações e destinação no período que fizer sentido e finalize quando estiver concluído.
+          </p>
+        </header>
+      )}
+      {!cycleId && (
+      <Card className="p-5">
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <Field label="Cliente">
+            <Select
+              value={clientId}
+              onValueChange={(value) => {
+                setClientId(value);
+                setCycleId("");
+                setCycleBranchId("");
+                setResidueFilterId("all");
+              }}
+            >
+              <SelectTrigger className="min-w-0 [&>span]:min-w-0">
+                <SelectValue placeholder="Selecionar cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Filial ou pátio do boletim">
+            {clientHasNoBranches ? <Input value="Matriz — sem filial/pátio cadastrada" disabled /> : <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); }}>
+              <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+              <SelectContent>
+                {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+              </SelectContent>
+            </Select>}
+          </Field>
+          <Button
+            size="lg"
+            className="w-full md:w-auto"
+            disabled={!clientId || (!clientHasNoBranches && !cycleBranchId)}
+            onClick={() => setCreateOpen(true)}
           >
-            <SelectTrigger className="min-w-0 [&>span]:min-w-0">
-              <SelectValue placeholder="Selecionar cliente" />
-            </SelectTrigger>
-            <SelectContent>
-              {clients.map((client) => (
-                <SelectItem key={client.id} value={client.id}>
-                  {client.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Filial ou pátio do boletim">
-          {clientHasNoBranches ? <Input value="Matriz — sem filial/pátio cadastrada" disabled /> : <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); setContinuePreviousSetup(true); }} disabled={Boolean(cycleId)}>
-            <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar" /></SelectTrigger>
-            <SelectContent>
-              {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-            </SelectContent>
-          </Select>}
-        </Field>
-        <Field label="Início do boletim">
-          <Input
-            type="date"
-            value={periodStart}
-            onChange={(event) => {
-              setPeriodStart(event.target.value);
-            }}
-          />
-        </Field>
-        <Field label="Fim do boletim">
-          <Input type="date" value={periodEnd} min={periodStart} onChange={(event) => setPeriodEnd(event.target.value)} />
-        </Field>
-        {!cycleId && (cycleBranchId || clientHasNoBranches) && (
-          <div className="md:col-span-4 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-            {clientHasNoBranches ? <p className="text-muted-foreground">Este cliente não possui filial ou pátio. O boletim será aberto em nome da matriz e poderá receber serviços normalmente.</p> : previousClosedCycleQuery.isLoading ? (
-              <p className="text-muted-foreground">Consultando o último boletim fechado deste pátio…</p>
-            ) : previousClosedCycle ? (
-              <>
-                <p className="font-medium">Último boletim fechado: {bulletinNumber(previousClosedCycle.bulletin_number)}</p>
-                <p className="mt-1 text-muted-foreground">
-                  {previousClosedPlacements.length
-                    ? `${previousClosedPlacements.length} registro(s) de equipamento ficaram no local. Você pode trazê-los com os valores atuais do cadastro.`
-                    : "Nenhum equipamento ficou em locação nesse boletim."}
-                </p>
-                <label className="mt-3 flex cursor-pointer items-center gap-2 font-medium">
-                  <Checkbox checked={continuePreviousSetup} onCheckedChange={(checked) => setContinuePreviousSetup(Boolean(checked))} />
-                  Trazer os equipamentos que ficaram no local
-                </label>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Desmarque para iniciar este boletim vazio. Movimentações, pesos, serviços e totais anteriores nunca são copiados.
-                </p>
-              </>
-            ) : (
-              <p className="text-muted-foreground">Não há boletim fechado anterior para este pátio. O novo boletim será iniciado vazio.</p>
-            )}
-          </div>
-        )}
-        <Button className="self-end" onClick={() => openCycle.mutate()}>
-          <FilePlus2 className="mr-2 h-4 w-4" />
-          Criar novo boletim
-        </Button>
+            <FilePlus2 className="mr-2 h-4 w-4" />
+            Criar boletim
+          </Button>
+        </div>
       </Card>
+      )}
       {!cycleId ? (
         <div className="flex flex-col gap-6">
           <Card className="order-2 p-5">
@@ -1657,6 +1652,18 @@ export function BillingV2Module() {
                 <p className="mt-1 text-sm text-muted-foreground">Abra rapidamente um boletim de qualquer cliente.</p>
               </div>
               <span className="text-xs text-muted-foreground">Últimos 8 registros</span>
+            </div>
+            <div className="mt-4 inline-flex rounded-lg border bg-muted/40 p-0.5 text-sm">
+              {([["all", "Todos"], ["draft", "Em edição"], ["closed", "Finalizados"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setResultStatusFilter(value)}
+                  className={`rounded-md px-3 py-1.5 font-medium transition-colors ${resultStatusFilter === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Cliente</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>
@@ -1680,6 +1687,18 @@ export function BillingV2Module() {
               </Button>
             </div>
           </div>
+          <div className="mt-4 inline-flex rounded-lg border bg-muted/40 p-0.5 text-sm">
+            {([["all", "Todos"], ["draft", "Em edição"], ["closed", "Finalizados"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setResultStatusFilter(value)}
+                className={`rounded-md px-3 py-1.5 font-medium transition-colors ${resultStatusFilter === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="w-10 p-2"><Checkbox aria-label="Selecionar todos os boletins encontrados" checked={resultCycles.length > 0 && resultCycles.every((item) => selectedBulkCycleIds.includes(item.id))} onCheckedChange={(checked) => toggleAllResultCycles(Boolean(checked))} /></th><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
               {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
@@ -1689,71 +1708,42 @@ export function BillingV2Module() {
         </div>
       ) : (
         <>
-          <Card className="p-5">
-            <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="lg:text-center">
-                <p className="text-xs text-muted-foreground">Cliente</p>
-                <p className="truncate font-semibold" title={clientName}>{clientName}</p>
-              </div>
-              <div className="lg:text-center">
-                <p className="text-xs text-muted-foreground">Período</p>
-                <p className="font-semibold">{cycle ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</p>
-              </div>
-              <div className="lg:text-center">
-                <p className="text-xs text-muted-foreground">Filial ou pátio</p>
-                <p className="truncate font-semibold" title={branch(cycle?.branch_id || "")?.name || "Boletim legado"}>{branch(cycle?.branch_id || "")?.name || "Boletim legado"}</p>
-              </div>
-              <div className="lg:text-center">
-                <p className="text-xs text-muted-foreground">Número do boletim</p>
-                <p className="font-semibold text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</p>
-              </div>
-              <div className="lg:text-center">
-                <p className="text-xs text-muted-foreground">Total do boletim</p>
-                <p className="font-semibold text-primary">{money(filteredTotals.total)}</p>
-              </div>
-            </div>
-            <div className="mt-5 flex flex-wrap justify-center gap-2 border-t pt-4">
-              <div className="min-w-56">
-                <Select value={residueFilterId} onValueChange={setResidueFilterId}>
-                  <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os resíduos</SelectItem>
-                    {residuesForCycleBranch.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={residueFilterId === "all" && cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{residueFilterId !== "all" ? `Finalizar emissão #${filteredEmissionPreview}` : cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
-              <Button onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{filteredEmissionPreview ? ` #${filteredEmissionPreview}` : ""}</Button>
+          <Card className="sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-primary/15 p-3 shadow-elegant supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur">
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setCycleId("")}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar aos boletins
+            </Button>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className="text-lg font-bold tracking-tight text-primary">{filteredEmissionPreview ? `#${filteredEmissionPreview}` : bulletinNumber(cycle?.bulletin_number)}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cycle?.status === "closed" ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-800"}`}>
+                {cycle?.status === "closed" ? "Finalizado" : "Em edição"}
+              </span>
+              <span className="min-w-0 truncate text-sm text-muted-foreground" title={`${clientName} · ${branch(cycle?.branch_id || "")?.name || "Boletim legado"}`}>
+                <span className="font-medium text-foreground">{clientName}</span>
+                {" · "}{branch(cycle?.branch_id || "")?.name || "Boletim legado"}
+                {" · "}{cycle ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}
+              </span>
             </div>
           </Card>
           <Tabs
-            value={tab}
-            onValueChange={(nextTab) => {
-              // Esta opção é uma volta para a lista de busca, não apenas uma
-              // subaba do boletim que continua aberto acima.
-              if (nextTab === "historico") {
-                setCycleId("");
-                return;
-              }
-              setTab(nextTab);
-            }}
+            value={tab === "historico" ? "locacoes" : tab}
+            onValueChange={setTab}
           >
-            <TabsList className="h-auto w-full justify-start overflow-x-auto">
-              <TabsTrigger value="historico">Boletins do cliente</TabsTrigger>
-              <TabsTrigger value="locacoes">Equipamentos em locação</TabsTrigger>
-              <TabsTrigger value="movimentos">Movimentações</TabsTrigger>
-              <TabsTrigger value="boletim">Boletim</TabsTrigger>
-              <TabsTrigger value="emitidos">Boletins emitidos</TabsTrigger>
+            <TabsList className="h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1">
+              <TabsTrigger value="locacoes" className="rounded-lg data-[state=active]:shadow-sm">Locação</TabsTrigger>
+              <TabsTrigger value="movimentos" className="rounded-lg data-[state=active]:shadow-sm">Movimentações</TabsTrigger>
+              <TabsTrigger value="boletim" className="rounded-lg data-[state=active]:shadow-sm">Boletim</TabsTrigger>
+              <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm">Emissões</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
             <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{[...clientCycles.filter((item) => item.status === "closed").map((item) => ({ kind: "cycle" as const, item })), ...residueEmissions.map((item) => ({ kind: "residue" as const, item }))].length ? <>{clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>)}{residueEmissions.map((item) => { const parent = clientCycles.find((candidate) => candidate.id === item.cycle_id); return <tr key={item.id} className="border-b bg-muted/20"><td className="p-2 font-semibold">#{item.display_number}</td><td className="p-2">{branchName(parent?.branch_id)}</td><td className="p-2">{parent ? `${new Date(`${parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")} · ${residues.find((residue) => residue.id === item.waste_residue_id)?.name || "Resíduo"}` : "Resíduo filtrado"}</td><td className="p-2">{new Date(item.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>; })}</> : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
-            <TabsContent value="locacoes" className="space-y-4">
-              <Card className="p-4">
+            <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
+              <Card className="p-5 xl:sticky xl:top-40">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   O valor de locação é definido no cadastro de cada equipamento deste pátio.
                 </p>
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="mt-4 grid gap-3">
                   <Field label="Filial ou pátio">
                     <Select
                       value={lockedBranchId || placementForm.branchId}
@@ -1846,7 +1836,7 @@ export function BillingV2Module() {
                       }
                     />
                   </Field>
-                  <Button className="self-end" onClick={() => addPlacement.mutate()}>
+                  <Button className="mt-1 w-full" onClick={() => addPlacement.mutate()}>
                     Registrar locação
                   </Button>
                 </div>
@@ -1957,54 +1947,81 @@ export function BillingV2Module() {
                   </Field>
                   <div className="md:col-span-4 grid gap-3 md:grid-cols-2">
                     <Field label="Retirada">
-                      <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
-                        {!movementForm.branchId ? (
-                          <p className="text-sm text-muted-foreground">Selecione primeiro a filial ou pátio.</p>
-                        ) : activePlacementsAtBranch.length ? (
-                          activePlacementsAtBranch.map((placement) => {
-                            const item = equipment.find((entry) => entry.id === placement.equipment_id);
-                            const checked = outgoingPlacementIds.includes(placement.id);
-                            return (
-                              <label key={placement.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={(value) =>
-                                    setOutgoingPlacementIds((current) =>
-                                      value ? [...current, placement.id] : current.filter((id) => id !== placement.id),
-                                    )
-                                  }
-                                />
-                                <span>{equipmentName(item)} {Number(placement.quantity) > 1 ? `(${number(Number(placement.quantity))} unidades)` : ""}</span>
-                              </label>
-                            );
-                          })
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Nenhum equipamento em locação neste pátio.</p>
-                        )}
-                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" disabled={!movementForm.branchId || !activePlacementsAtBranch.length} className="w-full justify-between font-normal">
+                            <span className="truncate">
+                              {!movementForm.branchId
+                                ? "Selecione o pátio primeiro"
+                                : !activePlacementsAtBranch.length
+                                  ? "Nenhum equipamento em locação"
+                                  : outgoingPlacementIds.length
+                                    ? `${outgoingPlacementIds.length} equipamento(s) selecionado(s)`
+                                    : "Selecionar equipamentos"}
+                            </span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1">
+                          <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                            {activePlacementsAtBranch.map((placement) => {
+                              const item = equipment.find((entry) => entry.id === placement.equipment_id);
+                              const checked = outgoingPlacementIds.includes(placement.id);
+                              return (
+                                <label key={placement.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(value) =>
+                                      setOutgoingPlacementIds((current) =>
+                                        value ? [...current, placement.id] : current.filter((id) => id !== placement.id),
+                                      )
+                                    }
+                                  />
+                                  <span>{equipmentName(item)} {Number(placement.quantity) > 1 ? `(${number(Number(placement.quantity))} unidades)` : ""}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </Field>
                     <Field label="Colocação">
-                      <div className="min-h-11 space-y-2 rounded-md border bg-muted/20 p-3">
-                        {equipment
-                          .filter((item) => item.branch_id === movementForm.branchId)
-                          .filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id))
-                          .map((item) => {
-                          const checked = incomingEquipmentIds.includes(item.id);
-                          return (
-                            <label key={item.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={(value) =>
-                                  setIncomingEquipmentIds((current) =>
-                                    value ? [...current, item.id] : current.filter((id) => id !== item.id),
-                                  )
-                                }
-                              />
-                              <span>{equipmentName(item)}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" disabled={!movementForm.branchId || !incomingEquipmentBase.length} className="w-full justify-between font-normal">
+                            <span className="truncate">
+                              {!movementForm.branchId
+                                ? "Selecione o pátio primeiro"
+                                : !incomingEquipmentBase.length
+                                  ? "Nenhum equipamento disponível"
+                                  : incomingEquipmentIds.length
+                                    ? `${incomingEquipmentIds.length} equipamento(s) selecionado(s)`
+                                    : "Selecionar equipamentos"}
+                            </span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1">
+                          <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                            {incomingEquipmentBase.map((item) => {
+                              const checked = incomingEquipmentIds.includes(item.id);
+                              return (
+                                <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(value) =>
+                                      setIncomingEquipmentIds((current) =>
+                                        value ? [...current, item.id] : current.filter((id) => id !== item.id),
+                                      )
+                                    }
+                                  />
+                                  <span>{equipmentName(item)}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </Field>
                   </div>
                   {(outgoingPlacementIds.length > 0 || incomingEquipmentIds.length > 0) && (
@@ -2167,10 +2184,107 @@ export function BillingV2Module() {
                 cycleServices={filteredServices}
                 totals={filteredTotals}
               />
+              <Card className="flex flex-wrap items-center justify-between gap-3 border-primary/15 p-4">
+                <div className="min-w-0">
+                  <p className="font-semibold">Emitir boletim</p>
+                  <p className="text-sm text-muted-foreground">Filtre por resíduo para emitir uma versão separada, finalize e gere o PDF.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-48">
+                    <Select value={residueFilterId} onValueChange={setResidueFilterId}>
+                      <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os resíduos</SelectItem>
+                        {residuesForCycleBranch.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={residueFilterId === "all" && cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{residueFilterId !== "all" ? `Finalizar emissão #${filteredEmissionPreview}` : cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
+                  <Button onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{filteredEmissionPreview ? ` #${filteredEmissionPreview}` : ""}</Button>
+                </div>
+              </Card>
             </TabsContent>
           </Tabs>
         </>
       )}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo boletim</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{clientName}</span>
+              {cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : clientHasNoBranches ? " · Matriz" : ""}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Início do boletim">
+                <Input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} />
+              </Field>
+              <Field label="Fim do boletim">
+                <Input type="date" value={periodEnd} min={periodStart} onChange={(event) => setPeriodEnd(event.target.value)} />
+              </Field>
+            </div>
+            {(cycleBranchId || clientHasNoBranches) && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                {clientHasNoBranches ? <p className="text-muted-foreground">Este cliente não possui filial ou pátio. O boletim será aberto em nome da matriz e poderá receber serviços normalmente.</p> : previousClosedCycleQuery.isLoading ? (
+                  <p className="text-muted-foreground">Consultando o último boletim fechado deste pátio…</p>
+                ) : previousClosedCycle ? (
+                  <>
+                    <p className="font-medium">Último boletim fechado: {bulletinNumber(previousClosedCycle.bulletin_number)}</p>
+                    {previousClosedPlacements.length ? (
+                      <>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <p className="text-muted-foreground">Selecione os equipamentos que ficaram no local para trazer:</p>
+                          <button
+                            type="button"
+                            onClick={() => setImportPlacementIds(importPlacementIds.length === previousClosedPlacements.length ? [] : previousClosedPlacements.map((item) => item.id))}
+                            className="shrink-0 text-xs font-medium text-primary hover:underline"
+                          >
+                            {importPlacementIds.length === previousClosedPlacements.length ? "Desmarcar todos" : "Marcar todos"}
+                          </button>
+                        </div>
+                        <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-md border bg-card p-2">
+                          {previousClosedPlacements.map((item) => {
+                            const equipmentItem = equipment.find((entry) => entry.id === item.equipment_id);
+                            const checked = importPlacementIds.includes(item.id);
+                            return (
+                              <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-muted/50">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(value) => setImportPlacementIds((current) => value ? [...current, item.id] : current.filter((id) => id !== item.id))}
+                                />
+                                <span className="flex-1">{equipmentName(equipmentItem)}{Number(item.quantity) > 1 ? ` · ${number(Number(item.quantity))} unidades` : ""}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {importPlacementIds.length
+                            ? `${importPlacementIds.length} de ${previousClosedPlacements.length} equipamento(s) serão trazidos com os valores atuais do cadastro.`
+                            : "Nenhum selecionado — o boletim será iniciado vazio."}
+                          {" "}Movimentações, pesos, serviços e totais anteriores nunca são copiados.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground">Nenhum equipamento ficou em locação nesse boletim. O novo boletim será iniciado vazio.</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Não há boletim fechado anterior para este pátio. O novo boletim será iniciado vazio.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+            <Button onClick={() => openCycle.mutate()} disabled={openCycle.isPending}>
+              <FilePlus2 className="mr-2 h-4 w-4" />
+              {openCycle.isPending ? "Criando…" : "Criar boletim"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
