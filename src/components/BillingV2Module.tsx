@@ -1,7 +1,7 @@
 /** Faturamento: boletins independentes, espelhando o fluxo operacional. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileText, Pencil, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Download, FilePlus2, FileText, Image as ImageIcon, Pencil, RotateCcw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useClients } from "@/hooks/use-data";
 import { supabase } from "@/integrations/supabase/client";
@@ -235,6 +235,7 @@ export function BillingV2Module() {
   const [importPlacementIds, setImportPlacementIds] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [resultStatusFilter, setResultStatusFilter] = useState<"all" | "draft" | "closed">("draft");
+  const [treatmentCompanyId, setTreatmentCompanyId] = useState("");
   const savingMovementRef = useRef(false);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [serviceAmount, setServiceAmount] = useState("0");
@@ -1064,19 +1065,112 @@ export function BillingV2Module() {
       if (!cycleId) throw Error("Abra um boletim antes de finalizá-lo.");
       if (residueFilterId !== "all") {
         const emission = await ensureResidueEmission();
-        return { displayNumber: emission.display_number, residueEmission: true };
+        const cycleResidues = Array.from(new Set([
+          ...placements.filter((item) => item.waste_residue_id).map((item) => item.waste_residue_id as string),
+          ...movements.filter((item) => item.confirmed && item.waste_residue_id).map((item) => item.waste_residue_id as string),
+        ]));
+        const { data: emissionsNow, error: emissionsError } = await (supabase.from("billing_v2_residue_emissions" as any) as any)
+          .select("waste_residue_id")
+          .eq("cycle_id", cycleId);
+        if (emissionsError) throw emissionsError;
+        const finalizedSet = new Set((emissionsNow || []).map((item: { waste_residue_id: string }) => item.waste_residue_id));
+        const stillPending = cycleResidues.filter((id) => !finalizedSet.has(id));
+        const closedNow = cycleResidues.length > 0 && stillPending.length === 0;
+        if (closedNow) {
+          const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+            .update({ status: "closed", finalized_at: new Date().toISOString() })
+            .eq("id", cycleId);
+          if (error) throw error;
+        }
+        return { displayNumber: emission.display_number, residueEmission: true, closedNow, pending: stillPending.length };
       }
       const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
         .update({ status: "closed", finalized_at: new Date().toISOString() })
         .eq("id", cycleId);
       if (error) throw error;
-      return { residueEmission: false };
+      return { residueEmission: false, closedNow: true, pending: 0 };
     },
     onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
       void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
       void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
-      toast.success(result.residueEmission ? `Emissão #${result.displayNumber} finalizada para o resíduo selecionado.` : "Boletim finalizado. Ele continuará disponível para edição e reimpressão.");
+      if (!result.residueEmission) {
+        toast.success("Boletim finalizado. Ele continuará disponível para edição e reimpressão.");
+      } else if (result.closedNow) {
+        toast.success(`Emissão #${result.displayNumber} finalizada. Todos os resíduos concluídos — boletim encerrado.`);
+      } else {
+        toast.success(`Emissão #${result.displayNumber} finalizada. Falta(m) ${result.pending} resíduo(s) pendente(s).`);
+      }
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const reopenCycle = useMutation({
+    mutationFn: async () => {
+      if (!cycleId) throw Error("Abra um boletim antes de reabri-lo.");
+      const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+        .update({ status: "draft", finalized_at: null, client_portal_visible: false })
+        .eq("id", cycleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+      toast.success("Boletim reaberto. Ele volta para edição e deixa de contar no faturamento até ser finalizado novamente.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const reevaluateCycleClosure = async (targetCycleId: string) => {
+    const { data: cycleRow } = await (supabase.from("billing_v2_cycles" as any) as any)
+      .select("status").eq("id", targetCycleId).maybeSingle();
+    if (!cycleRow || cycleRow.status !== "closed") return false;
+    const [placementsRes, movementsRes, emissionsRes] = await Promise.all([
+      (supabase.from("billing_v2_placements" as any) as any).select("waste_residue_id").eq("cycle_id", targetCycleId),
+      (supabase.from("billing_v2_movements" as any) as any).select("waste_residue_id,confirmed").eq("cycle_id", targetCycleId),
+      (supabase.from("billing_v2_residue_emissions" as any) as any).select("waste_residue_id").eq("cycle_id", targetCycleId),
+    ]);
+    const realResidues = new Set<string>();
+    (placementsRes.data || []).forEach((item: { waste_residue_id: string | null }) => { if (item.waste_residue_id) realResidues.add(item.waste_residue_id); });
+    (movementsRes.data || []).forEach((item: { waste_residue_id: string | null; confirmed: boolean | null }) => { if (item.confirmed && item.waste_residue_id) realResidues.add(item.waste_residue_id); });
+    const finalized = new Set((emissionsRes.data || []).map((item: { waste_residue_id: string }) => item.waste_residue_id));
+    const pending = Array.from(realResidues).filter((id) => !finalized.has(id));
+    if (!pending.length) return false;
+    const { error } = await (supabase.from("billing_v2_cycles" as any) as any)
+      .update({ status: "draft", finalized_at: null }).eq("id", targetCycleId);
+    if (error) throw error;
+    return true;
+  };
+  const removeResidueEmission = useMutation({
+    mutationFn: async (residueId: string) => {
+      if (!cycleId) throw Error("Abra um boletim antes de desfazer uma finalização.");
+      const { error } = await (supabase.from("billing_v2_residue_emissions" as any) as any)
+        .delete()
+        .eq("cycle_id", cycleId)
+        .eq("waste_residue_id", residueId);
+      if (error) throw error;
+      const reopened = await reevaluateCycleClosure(cycleId);
+      return { reopened };
+    },
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
+      toast.success(result.reopened ? "Finalização desfeita — o boletim voltou para edição." : "Finalização do resíduo desfeita. Essa emissão foi removida.");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const deleteResidueEmission = useMutation({
+    mutationFn: async (emission: { id: string; cycleId: string }) => {
+      const { error } = await (supabase.from("billing_v2_residue_emissions" as any) as any).delete().eq("id", emission.id);
+      if (error) throw error;
+      const reopened = await reevaluateCycleClosure(emission.cycleId);
+      return { reopened };
+    },
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      void qc.invalidateQueries({ queryKey: ["billing-v2-recent"] });
+      toast.success(result.reopened ? "Emissão excluída — o boletim voltou para edição." : "Emissão por resíduo excluída.");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -1199,6 +1293,13 @@ export function BillingV2Module() {
   const branchName = (id?: string | null) => branch(id || "")?.name || "Matriz (sem filial/pátio)";
   const clientCycles = cyclesQuery.data || [];
   const residueEmissions = residueEmissionsQuery.data || [];
+  const finalizedResidueIds = new Set(residueEmissions.filter((item) => item.cycle_id === cycleId).map((item) => item.waste_residue_id));
+  const cycleResidueIds = Array.from(new Set([
+    ...placements.filter((item) => item.waste_residue_id).map((item) => item.waste_residue_id as string),
+    ...movements.filter((item) => item.confirmed && item.waste_residue_id).map((item) => item.waste_residue_id as string),
+  ]));
+  const pendingResidueNames = cycleResidueIds.filter((id) => !finalizedResidueIds.has(id)).map((id) => residues.find((item) => item.id === id)?.name || "Resíduo");
+  const finalizedResidueNames = cycleResidueIds.filter((id) => finalizedResidueIds.has(id)).map((id) => residues.find((item) => item.id === id)?.name || "Resíduo");
   const recentCycles = (recentCyclesQuery.data || [])
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
     .sort((a, b) => (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0));
@@ -1232,11 +1333,11 @@ export function BillingV2Module() {
     const pdfClientName = clients.find((item) => item.id === printableCycle?.client_id)?.name || clientName;
     const pdfClient = clients.find((item) => item.id === printableCycle?.client_id);
     const pdfResidueName = pdfResidueId === "all" ? "Todos os resíduos" : residues.find((item) => item.id === pdfResidueId)?.name || "Resíduo selecionado";
+    const pdfTreatmentCompany = treatmentCompanyId && printableCycle?.id === cycle?.id ? outsourcedCompanies.find((company) => company.id === treatmentCompanyId) : undefined;
     const pdfIssuerCompany = outsourcedCompanies.find((company) => company.id === printableCycle?.outsourced_company_id);
-    const pdfDocumentThirdParty = pdfIssuerCompany || outsourcedCompanies.find((company) =>
+    const pdfServiceCompany = pdfIssuerCompany || outsourcedCompanies.find((company) =>
       pdfServices.some((service) => service.outsourced_company_id === company.id),
     );
-    const pdfHasThirdPartyContext = Boolean(pdfDocumentThirdParty);
     const confirmedMovements = pdfMovements.filter((item) => item.confirmed);
     const branchIds = Array.from(new Set([...pdfPlacements, ...confirmedMovements].map((item) => item.branch_id).filter(Boolean)));
     if (!branchIds.length && printableCycle?.branch_id) branchIds.push(printableCycle.branch_id);
@@ -1261,20 +1362,13 @@ export function BillingV2Module() {
     const drawHeader = async (pageBranch: Branch | null, pageIndex: number) => {
       if (pageIndex) doc.addPage();
       doc.setFillColor(62, 122, 79); doc.rect(0, 0, 210, 42, "F");
-      doc.setFillColor(250, 253, 249); doc.roundedRect(12, 5, 40, 26, 3, 3, "F");
-      doc.setDrawColor(210, 229, 205); doc.setLineWidth(0.35); doc.roundedRect(12, 5, 40, 26, 3, 3, "S");
-      await drawLogo(jacoby.logo_url, 15, 7, 34, 21, true);
-      if (pdfDocumentThirdParty?.logo_url) {
-        doc.setFillColor(250, 253, 249); doc.roundedRect(158, 5, 40, 26, 3, 3, "F");
-        doc.setDrawColor(210, 229, 205); doc.roundedRect(158, 5, 40, 26, 3, 3, "S");
-        await drawLogo(pdfDocumentThirdParty.logo_url, 161, 7, 34, 21);
-      }
+      doc.setLineWidth(0.35);
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("BOLETIM DE MEDIÇÃO", 105, 16, { align: "center" });
       doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
       doc.text(`Período: ${new Date(`${printableCycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${printableCycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`, 105, 23, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`BOLETIM ${printableBulletinNumber}`, 105, 29, { align: "center" });
       doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-      const clientHeaderMaxWidth = pdfDocumentThirdParty?.logo_url ? 96 : 138;
+      const clientHeaderMaxWidth = 170;
       const clientHeaderName = (() => {
         const name = pdfClientName.toUpperCase();
         if (doc.getTextWidth(name) <= clientHeaderMaxWidth) return name;
@@ -1294,27 +1388,39 @@ export function BillingV2Module() {
       const invoiceIssuerNoticeY = noticeY + (invoiceIssuerNoticeHeight - (invoiceIssuerNoticeLines.length - 1) * 4) / 2 + 1.2;
       doc.text(invoiceIssuerNoticeLines, 105, invoiceIssuerNoticeY, { align: "center", lineHeightFactor: 1.1 });
       const companyY = noticeY + invoiceIssuerNoticeHeight + 5;
-      const drawCompanyCard = (x: number, role: string, name: string, details: string) => {
-        doc.setFillColor(247, 250, 246); doc.roundedRect(x, companyY, 88, 27, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(x, companyY, 88, 27, 3, 3, "S");
-        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(7.2); doc.text(role.toUpperCase(), x + 5, companyY + 6);
-        doc.setTextColor(39, 61, 45); doc.setFontSize(8.5); doc.text(doc.splitTextToSize(name, 76)[0], x + 5, companyY + 12);
-        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(6.2); doc.text(doc.splitTextToSize(details || "Dados cadastrais não informados.", 76).slice(0, 3), x + 5, companyY + 17);
-      };
-      let y: number;
-      if (pdfHasThirdPartyContext) {
-        drawCompanyCard(14, "Jacoby Soluções Ambientais - Gerenciadora", jacoby.trade_name || jacoby.legal_name, companyDetails(jacoby));
-        drawCompanyCard(108, "Terceirizada - Executora / Transportadora", pdfDocumentThirdParty?.trade_name || pdfDocumentThirdParty?.legal_name || "Não informada", companyDetails(pdfDocumentThirdParty || {}));
-        y = companyY + 32;
+      type HeaderParty = { role: string; name: string; details: string; logo: string | null; fallback?: boolean };
+      const parties: HeaderParty[] = [
+        { role: "Gerenciadora", name: jacoby.trade_name || jacoby.legal_name, details: companyDetails(jacoby), logo: jacoby.logo_url, fallback: true },
+      ];
+      const treatmentRole = `Tratamento${pdfResidueId !== "all" ? ` · ${pdfResidueName}` : ""}`;
+      if (pdfServiceCompany && pdfTreatmentCompany && pdfServiceCompany.id === pdfTreatmentCompany.id) {
+        parties.push({ role: `Nota do serviço · ${treatmentRole}`, name: pdfServiceCompany.trade_name || pdfServiceCompany.legal_name, details: companyDetails(pdfServiceCompany), logo: pdfServiceCompany.logo_url || null });
       } else {
-        doc.setFillColor(247, 250, 246); doc.roundedRect(14, companyY, 182, 30, 3, 3, "F"); doc.setDrawColor(184, 210, 176); doc.roundedRect(14, companyY, 182, 30, 3, 3, "S");
-        doc.setFillColor(225, 241, 221); doc.roundedRect(14, companyY, 182, 7, 3, 3, "F");
-        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-        doc.text("JACOBY SOLUÇÕES AMBIENTAIS · GERENCIADORA DO BOLETIM", 20, companyY + 5);
-        doc.setTextColor(39, 61, 45); doc.setFontSize(10); doc.text(jacoby.trade_name || jacoby.legal_name, 20, companyY + 13);
-        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
-        doc.text(doc.splitTextToSize(companyDetails(jacoby) || "Dados cadastrais não informados.", 168).slice(0, 2), 20, companyY + 19);
-        y = companyY + 36;
+        if (pdfServiceCompany) parties.push({ role: "Nota do serviço", name: pdfServiceCompany.trade_name || pdfServiceCompany.legal_name, details: companyDetails(pdfServiceCompany), logo: pdfServiceCompany.logo_url || null });
+        if (pdfTreatmentCompany) parties.push({ role: treatmentRole, name: pdfTreatmentCompany.trade_name || pdfTreatmentCompany.legal_name, details: companyDetails(pdfTreatmentCompany), logo: pdfTreatmentCompany.logo_url || null });
       }
+      const cardGap = 4;
+      const cardWidth = (182 - (parties.length - 1) * cardGap) / parties.length;
+      const cardHeight = 40;
+      for (let i = 0; i < parties.length; i++) {
+        const party = parties[i];
+        const cardX = 14 + i * (cardWidth + cardGap);
+        const cx = cardX + cardWidth / 2;
+        doc.setFillColor(247, 250, 246); doc.roundedRect(cardX, companyY, cardWidth, cardHeight, 3, 3, "F");
+        doc.setDrawColor(184, 210, 176); doc.roundedRect(cardX, companyY, cardWidth, cardHeight, 3, 3, "S");
+        const logoBoxW = Math.min(cardWidth - 10, 32);
+        const logoBoxX = cardX + (cardWidth - logoBoxW) / 2;
+        doc.setFillColor(255, 255, 255); doc.roundedRect(logoBoxX, companyY + 3, logoBoxW, 13, 2, 2, "F");
+        doc.setDrawColor(223, 236, 219); doc.roundedRect(logoBoxX, companyY + 3, logoBoxW, 13, 2, 2, "S");
+        await drawLogo(party.logo, logoBoxX + 2, companyY + 4.5, logoBoxW - 4, 10, party.fallback);
+        doc.setTextColor(35, 96, 58); doc.setFont("helvetica", "bold"); doc.setFontSize(6.3);
+        doc.text(doc.splitTextToSize(party.role.toUpperCase(), cardWidth - 6)[0], cx, companyY + 21, { align: "center" });
+        doc.setTextColor(39, 61, 45); doc.setFont("helvetica", "bold"); doc.setFontSize(7.6);
+        doc.text(doc.splitTextToSize(party.name, cardWidth - 6)[0], cx, companyY + 26.5, { align: "center" });
+        doc.setTextColor(93, 112, 97); doc.setFont("helvetica", "normal"); doc.setFontSize(5.8);
+        doc.text(doc.splitTextToSize(party.details || "Dados cadastrais não informados.", cardWidth - 6).slice(0, 3), cx, companyY + 31, { align: "center" });
+      }
+      let y = companyY + cardHeight + 5;
       const generatorName = pageBranch?.name || pdfClient?.trade_name || pdfClient?.legal_name || `${pdfClientName} (Matriz)`;
       const generatorDetails = pageBranch
         ? [pageBranch.cnpj && `CNPJ: ${pageBranch.cnpj}`, pageBranch.address].filter(Boolean).join(" · ")
@@ -1490,15 +1596,16 @@ export function BillingV2Module() {
   })();
   const generateCurrentPdf = async () => {
     if (residueFilterId === "all") return generatePdf();
-    const emission = await ensureResidueEmission();
-    await qc.invalidateQueries({ queryKey: ["billing-v2-residue-emissions", clientId] });
+    const existing = (residueEmissionsQuery.data || [])
+      .filter((item) => item.cycle_id === cycle?.id && item.waste_residue_id === residueFilterId)
+      .sort((a, b) => b.sequence - a.sequence)[0];
     return generatePdf({
       targetCycle: cycle!,
       placements: filteredPlacements,
       movements: filteredMovements,
       services: filteredServices,
       includeResidue: residueFilterId,
-      bulletinLabel: `#${emission.display_number}`,
+      bulletinLabel: existing ? `#${existing.display_number}` : undefined,
     });
   };
   const resultCycles = clientCycles
@@ -1736,7 +1843,7 @@ export function BillingV2Module() {
               <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm">Emissões</TabsTrigger>
             </TabsList>
             <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
-            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{[...clientCycles.filter((item) => item.status === "closed").map((item) => ({ kind: "cycle" as const, item })), ...residueEmissions.map((item) => ({ kind: "residue" as const, item }))].length ? <>{clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>)}{residueEmissions.map((item) => { const parent = clientCycles.find((candidate) => candidate.id === item.cycle_id); return <tr key={item.id} className="border-b bg-muted/20"><td className="p-2 font-semibold">#{item.display_number}</td><td className="p-2">{branchName(parent?.branch_id)}</td><td className="p-2">{parent ? `${new Date(`${parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")} · ${residues.find((residue) => residue.id === item.waste_residue_id)?.name || "Resíduo"}` : "Resíduo filtrado"}</td><td className="p-2">{new Date(item.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>; })}</> : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{[...clientCycles.filter((item) => item.status === "closed").map((item) => ({ kind: "cycle" as const, item })), ...residueEmissions.map((item) => ({ kind: "residue" as const, item }))].length ? <>{clientCycles.filter((item) => item.status === "closed").map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{branchName(item.branch_id)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label></td></tr>)}{residueEmissions.map((item) => { const parent = clientCycles.find((candidate) => candidate.id === item.cycle_id); return <tr key={item.id} className="border-b bg-muted/20"><td className="p-2 font-semibold">#{item.display_number}</td><td className="p-2">{branchName(parent?.branch_id)}</td><td className="p-2">{parent ? `${new Date(`${parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")} · ${residues.find((residue) => residue.id === item.waste_residue_id)?.name || "Resíduo"}` : "Resíduo filtrado"}</td><td className="p-2">{new Date(item.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><label className="inline-flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={!!item.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: item.id, visible: Boolean(checked) })} />{item.client_portal_visible ? "Publicado" : "Não publicado"}</label><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${item.display_number}`} aria-label={`Excluir emissão #${item.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${item.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: item.id, cycleId: item.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>; })}</> : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
               <Card className="p-5 xl:sticky xl:top-40">
                 <h2 className="font-semibold">Nova colocação em locação</h2>
@@ -2183,24 +2290,49 @@ export function BillingV2Module() {
                 services={services}
                 cycleServices={filteredServices}
                 totals={filteredTotals}
+                treatmentCompany={residueFilterId !== "all" && treatmentCompanyId ? (outsourcedCompanies.find((company) => company.id === treatmentCompanyId)?.trade_name || outsourcedCompanies.find((company) => company.id === treatmentCompanyId)?.legal_name || "") : ""}
               />
               <Card className="flex flex-wrap items-center justify-between gap-3 border-primary/15 p-4">
                 <div className="min-w-0">
                   <p className="font-semibold">Emitir boletim</p>
                   <p className="text-sm text-muted-foreground">Filtre por resíduo para emitir uma versão separada, finalize e gere o PDF.</p>
+                  {cycleResidueIds.length > 0 && cycle?.status !== "closed" && (
+                    pendingResidueNames.length ? (
+                      <p className="mt-1 text-sm"><span className="font-medium text-amber-700">Faltam finalizar:</span> <span className="text-muted-foreground">{pendingResidueNames.join(", ")}</span>{finalizedResidueNames.length ? <span className="text-muted-foreground"> · já finalizados: {finalizedResidueNames.join(", ")}</span> : null}</p>
+                    ) : (
+                      <p className="mt-1 text-sm font-medium text-primary">Todos os resíduos finalizados — finalize mais uma vez para encerrar o boletim.</p>
+                    )
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="w-48">
-                    <Select value={residueFilterId} onValueChange={setResidueFilterId}>
+                    <Select value={residueFilterId} onValueChange={(value) => { setResidueFilterId(value); if (value === "all") setTreatmentCompanyId(""); }}>
                       <SelectTrigger><SelectValue placeholder="Filtrar resíduo" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos os resíduos</SelectItem>
-                        {residuesForCycleBranch.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}</SelectItem>)}
+                        {residuesForCycleBranch.map((residue) => <SelectItem key={residue.id} value={residue.id}>{residue.name}{finalizedResidueIds.has(residue.id) ? " ✓ finalizado" : ""}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
+                  {residueFilterId !== "all" && (
+                    <div className="w-56">
+                      <Select value={treatmentCompanyId || "none"} onValueChange={(value) => setTreatmentCompanyId(value === "none" ? "" : value)}>
+                        <SelectTrigger><SelectValue placeholder="Terceirizada do tratamento" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sem terceirizada do tratamento</SelectItem>
+                          {outsourcedCompanies.map((company) => <SelectItem key={company.id} value={company.id}>{company.trade_name || company.legal_name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {residueFilterId !== "all" && finalizedResidueIds.has(residueFilterId) && (
+                    <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={removeResidueEmission.isPending} onClick={() => { if (window.confirm(`Desfazer a finalização do resíduo "${selectedResidueName}"? A emissão por resíduo será removida.`)) removeResidueEmission.mutate(residueFilterId); }}><Trash2 className="mr-2 h-4 w-4" />Desfazer finalização</Button>
+                  )}
                   <Button variant="outline" onClick={() => finalizeCycle.mutate()} disabled={residueFilterId === "all" && cycle?.status === "closed"}><CheckCircle2 className="mr-2 h-4 w-4" />{residueFilterId !== "all" ? `Finalizar emissão #${filteredEmissionPreview}` : cycle?.status === "closed" ? "Boletim finalizado" : "Finalizar boletim"}</Button>
-                  <Button onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{filteredEmissionPreview ? ` #${filteredEmissionPreview}` : ""}</Button>
+                  {cycle?.status === "closed" && (
+                    <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50 hover:text-amber-900" disabled={reopenCycle.isPending} onClick={() => { if (window.confirm("Reabrir este boletim? Ele volta para edição e deixa de contar no faturamento até ser finalizado novamente.")) reopenCycle.mutate(); }}><RotateCcw className="mr-2 h-4 w-4" />Reabrir boletim</Button>
+                  )}
+                  <Button onClick={() => void generateCurrentPdf()}><Download className="mr-2 h-4 w-4" />Gerar PDF{residueFilterId !== "all" && finalizedResidueIds.has(residueFilterId) ? ` #${filteredEmissionPreview}` : ""}</Button>
                 </div>
               </Card>
             </TabsContent>
@@ -2484,17 +2616,19 @@ function MovementTable({
   const branchResidues = editing ? residues.filter((item) => !item.branch_id || item.branch_id === editing.branch_id) : [];
   const uploadPdf = async (row: Movement, file?: File) => {
     if (!file) return;
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      toast.error("Anexe somente arquivos PDF.");
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(file.name);
+    if (!isPdf && !isImage) {
+      toast.error("Anexe uma imagem (foto) ou um arquivo PDF.");
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
-      toast.error("O PDF deve ter no máximo 15 MB.");
+      toast.error("O arquivo deve ter no máximo 15 MB.");
       return;
     }
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${row.id}/${Date.now()}-${safeName}`;
-    const { error } = await supabase.storage.from("movement-documents").upload(path, file, { contentType: "application/pdf", upsert: false });
+    const { error } = await supabase.storage.from("movement-documents").upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
     if (error) return toast.error(error.message);
     try {
       await onAttachmentAdd(row.id, file.name, path);
@@ -2505,7 +2639,7 @@ function MovementTable({
   };
   const openPdf = async (attachment: MovementAttachment) => {
     const { data, error } = await supabase.storage.from("movement-documents").createSignedUrl(attachment.storage_path, 600);
-    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o PDF.");
+    if (error || !data?.signedUrl) return toast.error(error?.message || "Não foi possível abrir o anexo.");
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
   return (
@@ -2581,16 +2715,19 @@ function MovementTable({
                 </td>
                 <td className="p-2">
                   <div className="flex min-w-40 flex-col items-start gap-1">
-                    {groupAttachments.map((attachment) => (
+                    {groupAttachments.map((attachment) => {
+                      const isImageFile = /\.(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(attachment.file_name);
+                      return (
                       <div key={attachment.id} className="flex max-w-40 items-center gap-1">
-                        <Button variant="link" size="sm" className="h-auto min-w-0 flex-1 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}><FileText className="mr-1 h-3.5 w-3.5 shrink-0" /><span className="truncate">{attachment.file_name}</span></Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" title="Excluir este PDF" aria-label={`Excluir PDF ${attachment.file_name}`} disabled={removingAttachmentId === attachment.id} onClick={() => { if (window.confirm(`Excluir o PDF \"${attachment.file_name}\"?`)) onAttachmentRemove(attachment); }}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                        <Button variant="link" size="sm" className="h-auto min-w-0 flex-1 justify-start p-0 text-left" title={attachment.file_name} onClick={() => void openPdf(attachment)}>{isImageFile ? <ImageIcon className="mr-1 h-3.5 w-3.5 shrink-0" /> : <FileText className="mr-1 h-3.5 w-3.5 shrink-0" />}<span className="truncate">{attachment.file_name}</span></Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" title="Excluir este anexo" aria-label={`Excluir anexo ${attachment.file_name}`} disabled={removingAttachmentId === attachment.id} onClick={() => { if (window.confirm(`Excluir o anexo \"${attachment.file_name}\"?`)) onAttachmentRemove(attachment); }}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                       </div>
-                    ))}
+                      );
+                    })}
                     <label className="inline-flex">
-                      <input className="sr-only" type="file" accept="application/pdf,.pdf" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
-                      <Button asChild variant="outline" size="sm" disabled={uploadingId === row.id} aria-label="Adicionar PDF à movimentação">
-                        <span><Upload className="mr-1 h-3.5 w-3.5" />Adicionar PDF</span>
+                      <input className="sr-only" type="file" accept="image/*,application/pdf,.pdf" disabled={uploadingId === row.id} onChange={(event) => { void uploadPdf(row, event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                      <Button asChild variant="outline" size="sm" disabled={uploadingId === row.id} aria-label="Adicionar arquivo ou foto à movimentação">
+                        <span><Upload className="mr-1 h-3.5 w-3.5" />Adicionar arquivo</span>
                       </Button>
                     </label>
                   </div>
@@ -2699,6 +2836,7 @@ function Boletim({
   services,
   cycleServices,
   totals,
+  treatmentCompany,
 }: {
   client: string;
   cycle?: Cycle;
@@ -2718,6 +2856,7 @@ function Boletim({
     services: number;
     total: number;
   };
+  treatmentCompany?: string;
 }) {
   const branchIds = Array.from(
     new Set([...placements, ...movements].map((item) => item.branch_id)),
@@ -2733,6 +2872,11 @@ function Boletim({
             ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}`
             : ""}
         </p>
+        {treatmentCompany && (
+          <p className="mt-1 text-sm text-primary">
+            Tratamento realizado por: <span className="font-medium">{treatmentCompany}</span>
+          </p>
+        )}
       </div>
       <div className="rounded-lg border bg-muted/30 p-3 text-sm">
         <p className="font-semibold">Filiais e pátios incluídos</p>

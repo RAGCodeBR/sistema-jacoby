@@ -669,6 +669,27 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         ? await query.update(payload).eq("id", editingEquipment.id)
         : await query.insert(payload);
       if (error) throw error;
+      // O valor de locação deve entrar nos boletins ainda abertos. Boletins
+      // finalizados mantêm a taxa histórica com que foram emitidos.
+      if (editingEquipment) {
+        const { data: draftCycles, error: cyclesError } = await (
+          supabase.from("billing_v2_cycles" as any) as any
+        )
+          .select("id")
+          .eq("client_id", clientId)
+          .eq("status", "draft");
+        if (cyclesError) throw cyclesError;
+        const cycleIds = (draftCycles || []).map((cycle: { id: string }) => cycle.id);
+        if (cycleIds.length) {
+          const { error: placementsError } = await (
+            supabase.from("billing_v2_placements" as any) as any
+          )
+            .update({ monthly_rental_rate: Number(eqForm.rentalRate || 0) })
+            .in("cycle_id", cycleIds)
+            .eq("equipment_id", editingEquipment.id);
+          if (placementsError) throw placementsError;
+        }
+      }
       const existingVehicleModel = equipmentOptions.find(
         (item) =>
           item.option_type === "vehicle_model" && optionKey(item.name) === optionKey(payload.name),
