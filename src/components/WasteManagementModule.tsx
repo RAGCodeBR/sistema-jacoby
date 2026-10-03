@@ -88,12 +88,13 @@ type Service = {
   name: string;
   default_rate: number;
   active: boolean;
+  branch_id: string | null;
 };
 type OutsourcedCompany = { id: string; legal_name: string; trade_name: string | null; logo_url: string | null };
 type OutsourcedCompanyService = {
   outsourced_company_id: string;
   waste_service_id: string;
-  waste_services?: { id: string; name: string; active: boolean } | null;
+  waste_services?: { id: string; name: string; active: boolean; branch_id: string | null } | null;
 };
 type OutsourcedCommissionSetting = {
   id: string;
@@ -202,6 +203,9 @@ const equipmentLabel = (equipment?: Equipment) =>
         .filter(Boolean)
         .join(" · ")
     : "Equipamento";
+const BRANCH_MATRIZ = "__matriz__";
+const branchToDb = (value?: string | null) => (value && value !== BRANCH_MATRIZ ? value : null);
+const branchKey = (value?: string | null) => value || BRANCH_MATRIZ;
 const today = () => new Date().toISOString().slice(0, 10);
 const formatDate = (value: string) =>
   value
@@ -346,7 +350,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     rentalRate: "0",
   });
   const [exchangeForm, setExchangeForm] = useState({ branchId: "", equipmentId: "", residueId: "", rate: "0" });
-  const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "", rate: "0" });
+  const [serviceForm, setServiceForm] = useState({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" });
   const [move, setMove] = useState({
     placementOrder: "",
     residue: "",
@@ -451,7 +455,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     enabled: canConfigureMovements,
     queryFn: async () => {
       const { data, error } = await (supabase.from("outsourced_company_services" as any) as any)
-        .select("outsourced_company_id,waste_service_id,waste_services(id,name,active)");
+        .select("outsourced_company_id,waste_service_id,waste_services(id,name,active,branch_id)");
       if (error) throw error;
       return (data || []) as OutsourcedCompanyService[];
     },
@@ -557,8 +561,8 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       .filter((service, index, all) => all.findIndex((item) => item.id === service.id) === index)
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [activeServices, outsourcedCompanyServices]);
-  const equipmentForExchangeScope = equipment.filter((item) =>
-    exchangeForm.branchId === "company" ? !item.branch_id : item.branch_id === exchangeForm.branchId,
+  const equipmentForExchangeScope = equipment.filter(
+    (item) => branchKey(item.branch_id) === exchangeForm.branchId,
   );
   const selectedExchangeEquipment = equipmentForExchangeScope.find(
     (item) => item.id === exchangeForm.equipmentId,
@@ -590,7 +594,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       if (!clientId || !resForm.name) throw Error("Informe o tipo de resíduo.");
       const payload = {
         client_id: clientId,
-        branch_id: resForm.branchId || null,
+        branch_id: branchToDb(resForm.branchId),
         name: resForm.name,
         waste_class: resForm.waste_class,
         unit: resForm.unit,
@@ -655,7 +659,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         throw Error("Informe um valor de locação válido.");
       const payload = {
         client_id: clientId,
-        branch_id: eqForm.branchId || null,
+        branch_id: branchToDb(eqForm.branchId),
         identification: eqForm.identification.trim() || null,
         name: eqForm.name.trim(),
         equipment_type: eqForm.type.trim(),
@@ -773,7 +777,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       const query = supabase.from("waste_services" as any) as any;
       let serviceId = editingService?.id || "";
       if (editingService) {
-        const { error } = await query.update({ name: serviceForm.name.trim() }).eq("id", editingService.id);
+        const { error } = await query.update({ name: serviceForm.name.trim(), branch_id: branchToDb(serviceForm.branchId) }).eq("id", editingService.id);
         if (error) throw error;
         const { error: clearError } = await (supabase.from("outsourced_company_services" as any) as any)
           .delete().eq("waste_service_id", serviceId);
@@ -782,13 +786,14 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
         const existing = serviceForm.outsourcedCompanyId
           ? outsourcedCompanyServices.find((link) =>
               link.outsourced_company_id === serviceForm.outsourcedCompanyId &&
-              optionKey(link.waste_services?.name || "") === normalizedName,
+              optionKey(link.waste_services?.name || "") === normalizedName &&
+              branchKey(link.waste_services?.branch_id) === branchKey(branchToDb(serviceForm.branchId)),
             )
           : undefined;
         if (existing) serviceId = existing.waste_service_id;
         else {
           const { data: saved, error } = await query
-            .insert({ client_id: clientId, name: serviceForm.name.trim(), default_rate: 0 })
+            .insert({ client_id: clientId, name: serviceForm.name.trim(), default_rate: 0, branch_id: branchToDb(serviceForm.branchId) })
             .select("id").single();
           if (error) throw error;
           serviceId = saved?.id as string;
@@ -806,7 +811,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
     onSuccess: () => {
       toast.success(editingService ? "Serviço atualizado." : "Serviço cadastrado.");
       setEditingService(null);
-      setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0" });
+      setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" });
       refreshClient();
       void qc.invalidateQueries({ queryKey: ["outsourced-company-services"] });
     },
@@ -1516,10 +1521,10 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </p>
             <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
               <Field label="Filial ou pátio">
-                <Select value={resForm.branchId || "all"} onValueChange={(value) => setResForm({ ...resForm, branchId: value === "all" ? "" : value })}>
-                  <SelectTrigger><SelectValue placeholder="Todos os pátios" /></SelectTrigger>
+                <Select value={resForm.branchId || BRANCH_MATRIZ} onValueChange={(value) => setResForm({ ...resForm, branchId: value === BRANCH_MATRIZ ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Matriz (sem filial/pátio)" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos os pátios</SelectItem>
+                    <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>
                     {branches.filter((branch) => branch.is_active).map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -1632,7 +1637,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             headers={["Resíduo", "Filial/pátio", "Classe", "Locação", "Troca", "Tratamento/kg", "Ações"]}
             rows={residues.map((r) => [
               r.name,
-              branches.find((branch) => branch.id === r.branch_id)?.name || "Todos os pátios",
+              branches.find((branch) => branch.id === r.branch_id)?.name || "Matriz (sem filial/pátio)",
               r.waste_class === "class_i" ? "Classe I" : "Classe II",
               money(r.default_rental_rate),
               money(r.default_exchange_rate),
@@ -1652,7 +1657,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       rental: String(r.default_rental_rate),
                       exchange: String(r.default_exchange_rate),
                       treatment: String(r.default_treatment_rate),
-                      branchId: r.branch_id || "",
+                      branchId: branchKey(r.branch_id),
                     });
                   }}
                 >
@@ -1705,6 +1710,17 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   </SelectContent>
                 </Select>
               </Field>
+              <Field label="Filial ou pátio">
+                <Select value={serviceForm.branchId || BRANCH_MATRIZ} onValueChange={(value) => setServiceForm({ ...serviceForm, branchId: value === BRANCH_MATRIZ ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Matriz (sem filial/pátio)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>
+                    {branches.filter((branch) => branch.is_active).map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
               <div className="flex gap-2 self-end">
                 <Button onClick={() => addService.mutate()}>
                   {editingService ? "Salvar" : "Cadastrar"}
@@ -1714,7 +1730,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     variant="outline"
                     onClick={() => {
                       setEditingService(null);
-                      setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0" });
+                      setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" });
                     }}
                   >
                     Cancelar
@@ -1736,7 +1752,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                   title="Editar"
                   onClick={() => {
                     setEditingService(s);
-                    setServiceForm({ name: s.name, outsourcedCompanyId: outsourcedCompanyForService(s.id), rate: String(serviceRateForClient(s.id)) });
+                    setServiceForm({ name: s.name, outsourcedCompanyId: outsourcedCompanyForService(s.id), rate: String(serviceRateForClient(s.id)), branchId: branchKey(s.branch_id) });
                   }}
                 >
                   <Pencil className="h-4 w-4" />
@@ -1810,6 +1826,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                           <SelectValue placeholder="Selecionar" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>
                           {branches.filter((branch) => branch.is_active).map((branch) => (
                             <SelectItem key={branch.id} value={branch.id}>
                               {branch.name}
@@ -1818,7 +1835,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Input value="Empresa sem filial/pátio cadastrado" readOnly className="bg-muted/40 text-muted-foreground" />
+                      <Input value="Matriz (sem filial/pátio)" readOnly className="bg-muted/40 text-muted-foreground" />
                     )}
                   </Field>
                   <Field label="Identificação">
@@ -1914,7 +1931,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               <ActionTable
                 headers={["Pátio", "Identificação", "Veículo/Modelo", "Recipiente", "Capacidade", "Ações"]}
                 rows={equipment
-                  .filter((equipmentItem) => !eqForm.branchId || equipmentItem.branch_id === eqForm.branchId)
+                  .filter((equipmentItem) => !eqForm.branchId || branchKey(equipmentItem.branch_id) === eqForm.branchId)
                   .map((e) => [
                   branches.find((branch) => branch.id === e.branch_id)?.name || "Sem filial/pátio",
                   e.identification || "—",
@@ -1933,7 +1950,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       onClick={() => {
                         setEditingEquipment(e);
                         setEqForm({
-                          branchId: e.branch_id || "",
+                          branchId: branchKey(e.branch_id),
                           identification: e.identification || "",
                           name: e.name,
                           type: e.equipment_type,
@@ -2017,7 +2034,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                         variant="outline"
                         onClick={() => {
                           setEditingService(null);
-                          setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0" });
+                          setServiceForm({ name: "", outsourcedCompanyId: "", rate: "0", branchId: "" });
                         }}
                       >
                         Cancelar
@@ -2069,17 +2086,17 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               <Card className="p-4">
                 <h2 className="font-semibold">Valor por troca</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Selecione o pátio ou a empresa sem filial, depois o equipamento. O BM usa este valor quando esse equipamento for retirado em uma troca.
+                  Selecione a matriz ou o pátio, depois o equipamento. O BM usa este valor quando esse equipamento for retirado em uma troca.
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <Field label="Filial, pátio ou empresa">
+                  <Field label="Filial ou pátio">
                     <Select
                       value={exchangeForm.branchId}
                       onValueChange={(value) => setExchangeForm({ branchId: value, equipmentId: "", residueId: "", rate: "0" })}
                     >
                       <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="company">Empresa sem filial/pátio</SelectItem>
+                        <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>
                         {branches.filter((branch) => branch.is_active).map((branch) => (
                           <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
                         ))}
@@ -3414,13 +3431,13 @@ function ResidueBranchConfig({
   return (
     <>
       <Card className="p-4">
-        <h2 className="font-semibold">Resíduo e valor por filial/pátio</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Escolha o pátio para visualizar e definir seus valores próprios. O valor por kg entra no BM apenas quando a movimentação for confirmada.</p>
+        <h2 className="font-semibold">Resíduo e valor por matriz, filial ou pátio</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Escolha a matriz ou o pátio para visualizar e definir seus valores próprios. O valor por kg entra no BM apenas quando a movimentação for confirmada.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <Field label="Filial ou pátio">
-            <Select value={form.branchId || "all"} onValueChange={(value) => setForm({ id: "", branchId: value === "all" ? "" : value, name: "", treatment: "0" })}>
+            <Select value={form.branchId || BRANCH_MATRIZ} onValueChange={(value) => setForm({ id: "", branchId: value === BRANCH_MATRIZ ? "" : value, name: "", treatment: "0" })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="all">Todos os pátios</SelectItem>{branches.filter((branch) => branch.is_active).map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent>
+              <SelectContent><SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>{branches.filter((branch) => branch.is_active).map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
           <Field label="Resíduo"><><Input list="known-residues" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Lixo comercial" /><datalist id="known-residues">{knownResidueNames.map((name) => <option key={name} value={name} />)}</datalist></></Field>
@@ -3433,10 +3450,10 @@ function ResidueBranchConfig({
         rows={[
           ...currentRows.map((residue) => [
           residue.name,
-          branches.find((branch) => branch.id === residue.branch_id)?.name || "Todos os pátios",
+          branches.find((branch) => branch.id === residue.branch_id)?.name || "Matriz (sem filial/pátio)",
           money(residue.default_treatment_rate),
           <div key={residue.id} className="flex gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setForm({ id: residue.id, branchId: residue.branch_id || "", name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}><Pencil className="mr-2 h-4 w-4" />Editar</Button>
+            <Button variant="ghost" size="sm" onClick={() => setForm({ id: residue.id, branchId: branchKey(residue.branch_id), name: residue.name, treatment: String(residue.default_treatment_rate || 0) })}><Pencil className="mr-2 h-4 w-4" />Editar</Button>
             <Button variant="ghost" size="icon" title="Excluir resíduo" disabled={removeResidue.isPending} onClick={() => {
               if (confirm(`Excluir o resíduo “${residue.name}” desta configuração? Ele deixará de aparecer no BM e nos novos lançamentos.`)) removeResidue.mutate(residue);
             }}><Trash2 className="h-4 w-4 text-destructive" /></Button>

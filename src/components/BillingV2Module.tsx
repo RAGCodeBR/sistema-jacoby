@@ -87,7 +87,7 @@ type Movement = {
   observation: string | null;
 };
 type MovementAttachment = { id: string; movement_id: string; file_name: string; storage_path: string; created_at: string };
-type Service = { id: string; name: string; active: boolean; default_rate?: number };
+type Service = { id: string; name: string; active: boolean; default_rate?: number; branch_id?: string | null };
 type OutsourcedCompany = {
   id: string;
   legal_name: string;
@@ -103,7 +103,7 @@ type OutsourcedCompany = {
 type OutsourcedCompanyService = {
   outsourced_company_id: string;
   waste_service_id: string;
-  waste_services?: { id: string; name: string | null; active: boolean } | null;
+  waste_services?: { id: string; name: string | null; active: boolean; branch_id: string | null } | null;
 };
 type ClientServiceRate = { client_id: string; waste_service_id: string; default_rate: number };
 type ClientServiceRateOverride = {
@@ -141,6 +141,9 @@ const money = (value: number) =>
 const number = (value: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value || 0);
 const bulletinNumber = (value?: number | null) => `#${String(value || 0).padStart(3, "0")}`;
+const BRANCH_MATRIZ = "__matriz__";
+const branchToDb = (value?: string | null) => (value && value !== BRANCH_MATRIZ ? value : null);
+const branchKey = (value?: string | null) => value || BRANCH_MATRIZ;
 const serviceNameKey = (name?: string | null) =>
   (name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
 const billingViewStorageKey = "jacoby:billing-v2:view";
@@ -356,7 +359,7 @@ export function BillingV2Module() {
         .eq("status", "closed")
         .order("finalized_at", { ascending: false })
         .limit(1);
-      request = cycleBranchId ? request.eq("branch_id", cycleBranchId) : request.is("branch_id", null);
+      request = branchToDb(cycleBranchId) ? request.eq("branch_id", branchToDb(cycleBranchId)) : request.is("branch_id", null);
       const { data, error } = await request.maybeSingle();
       if (error) throw error;
       return data as Cycle | null;
@@ -390,7 +393,7 @@ export function BillingV2Module() {
     q.select("id,name,active,branch_id,default_treatment_rate").eq("client_id", clientId).order("name"),
   );
   const servicesQuery = query<Service>(["billing-v2-services", clientId], "waste_services", (q) =>
-    q.select("id,name,active,default_rate").eq("client_id", clientId).eq("active", true).order("name"),
+    q.select("id,name,active,default_rate,branch_id").eq("client_id", clientId).eq("active", true).order("name"),
   );
   const outsourcedCompaniesQuery = useQuery({
     queryKey: ["outsourced-companies"],
@@ -407,7 +410,7 @@ export function BillingV2Module() {
     queryKey: ["outsourced-company-services"],
     queryFn: async () => {
       const { data, error } = await (supabase.from("outsourced_company_services" as any) as any)
-        .select("outsourced_company_id,waste_service_id,waste_services(id,name,active)");
+        .select("outsourced_company_id,waste_service_id,waste_services(id,name,active,branch_id)");
       if (error) throw error;
       return (data || []) as OutsourcedCompanyService[];
     },
@@ -448,7 +451,7 @@ export function BillingV2Module() {
   const cycle =
     (cyclesQuery.data || []).find((item) => item.id === cycleId) ||
     (recentCyclesQuery.data || []).find((item) => item.id === cycleId);
-  const lockedBranchId = cycle?.branch_id || "";
+  const lockedBranchId = cycle ? (cycle.branch_id || BRANCH_MATRIZ) : "";
   const placementsQuery = useQuery({
     queryKey: ["billing-v2-placements", cycleId],
     enabled: Boolean(cycleId),
@@ -534,7 +537,7 @@ export function BillingV2Module() {
     const outsourcedCatalog = outsourcedCompanyServices
       .map((link) => link.waste_services)
       .filter((service): service is NonNullable<typeof service> => Boolean(service?.active))
-      .map((service) => ({ id: service.id, name: service.name || "Serviço", active: service.active, default_rate: 0 }));
+      .map((service) => ({ id: service.id, name: service.name || "Serviço", active: service.active, default_rate: 0, branch_id: service.branch_id }));
     const clientOnly = clientServices.filter((service) =>
       !outsourcedCompanyServices.some((link) => link.waste_service_id === service.id),
     );
@@ -593,7 +596,7 @@ export function BillingV2Module() {
     () =>
       placements.filter(
         (item) =>
-          item.branch_id === movementForm.branchId &&
+          branchKey(item.branch_id) === movementForm.branchId &&
           !item.ended_on &&
           Number(item.quantity || 0) > 0,
       ),
@@ -602,21 +605,21 @@ export function BillingV2Module() {
   const incomingEquipmentBase = useMemo(
     () =>
       equipment
-        .filter((item) => item.branch_id === movementForm.branchId)
+        .filter((item) => branchKey(item.branch_id) === movementForm.branchId)
         .filter((item) => !outgoingPlacementIds.some((id) => activePlacementsAtBranch.find((placement) => placement.id === id)?.equipment_id === item.id)),
     [equipment, movementForm.branchId, outgoingPlacementIds, activePlacementsAtBranch],
   );
   const placementsForSelectedBranch = useMemo(
     () =>
       rentalBranchFilter
-        ? placements.filter((item) => item.branch_id === rentalBranchFilter)
+        ? placements.filter((item) => branchKey(item.branch_id) === rentalBranchFilter)
         : placements,
     [placements, rentalBranchFilter],
   );
   const movementsForSelectedBranch = useMemo(
     () =>
       movementBranchFilter
-        ? movements.filter((item) => item.branch_id === movementBranchFilter)
+        ? movements.filter((item) => branchKey(item.branch_id) === movementBranchFilter)
         : movements,
     [movements, movementBranchFilter],
   );
@@ -643,7 +646,7 @@ export function BillingV2Module() {
         throw Error("Informe um intervalo de datas válido para o boletim.");
       if (branches.length && !cycleBranchId) throw Error("Selecione a filial ou pátio deste boletim.");
       const { data, error } = await (supabase.from("billing_v2_cycles" as any) as any)
-        .insert({ client_id: clientId, branch_id: cycleBranchId || null, period_start: periodStart, period_end: periodEnd })
+        .insert({ client_id: clientId, branch_id: branchToDb(cycleBranchId), period_start: periodStart, period_end: periodEnd })
         .select("id")
         .single();
       if (error) throw error;
@@ -671,7 +674,7 @@ export function BillingV2Module() {
             chosen.map((item: Placement) => ({
               cycle_id: data.id,
               client_id: clientId,
-              branch_id: cycleBranchId,
+              branch_id: branchToDb(cycleBranchId),
               equipment_id: item.equipment_id,
               waste_residue_id: item.waste_residue_id,
               started_on: periodStart,
@@ -824,7 +827,7 @@ export function BillingV2Module() {
       const { error } = await (supabase.from("billing_v2_placements" as any) as any).insert({
         cycle_id: cycleId,
         client_id: clientId,
-        branch_id: placementForm.branchId,
+        branch_id: branchToDb(placementForm.branchId),
         equipment_id: placementForm.equipmentId,
         waste_residue_id: placementForm.residueId || null,
         started_on: placementForm.date,
@@ -900,7 +903,7 @@ export function BillingV2Module() {
       const movementRows = pairs.map((pair, index) => ({
         cycle_id: cycleId,
         batch_id: batchId,
-        branch_id: movementForm.branchId,
+        branch_id: branchToDb(movementForm.branchId),
         equipment_id: pair.placement?.equipment_id || null,
         replacement_equipment_id: pair.replacementEquipmentId || null,
         waste_residue_id: movementForm.residueId || null,
@@ -954,7 +957,7 @@ export function BillingV2Module() {
               replacements.map((equipmentId) => ({
                 cycle_id: cycleId,
                 client_id: clientId,
-                branch_id: movementForm.branchId,
+                branch_id: branchToDb(movementForm.branchId),
                 equipment_id: equipmentId,
                 waste_residue_id: placement.waste_residue_id,
                 started_on: placement.started_on,
@@ -1341,7 +1344,7 @@ export function BillingV2Module() {
   const recentDisplayCycles = bmSearching ? (bmSearchQuery.data || []) : recentCycles;
   const openRecentCycle = (item: Cycle) => {
     setClientId(item.client_id);
-    setCycleBranchId(item.branch_id || "");
+    setCycleBranchId(branchKey(item.branch_id));
     setCycleId(item.id);
     setResidueFilterId("all");
     setTab("locacoes");
@@ -1358,7 +1361,8 @@ export function BillingV2Module() {
         serviceNameKey(link.waste_services?.name) === serviceNameKey(service.name)
       )
     );
-  }).filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
+  }).filter((service) => branchKey(service.branch_id) === branchKey(cycle?.branch_id))
+    .filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
   const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string; bulletinLabel?: string; download?: boolean }) => {
     const printableCycle = options?.targetCycle || cycle;
     const pdfPlacements = options?.placements || filteredPlacements;
@@ -1475,8 +1479,8 @@ export function BillingV2Module() {
     for (const [index, id] of printableBranchIds.entries()) {
       const pageBranch = id === "__matriz__" ? null : branch(id);
       let y = await drawHeader(pageBranch, index);
-      const branchPlacements = id === "__matriz__" ? [] : pdfPlacements.filter((item) => item.branch_id === id);
-      const branchMoves = id === "__matriz__" ? [] : confirmedMovements.filter((item) => item.branch_id === id);
+      const branchPlacements = id === "__matriz__" ? pdfPlacements.filter((item) => !item.branch_id) : pdfPlacements.filter((item) => item.branch_id === id);
+      const branchMoves = id === "__matriz__" ? confirmedMovements.filter((item) => !item.branch_id) : confirmedMovements.filter((item) => item.branch_id === id);
       const treatmentByResidue = branchMoves.reduce<Record<string, { residueId: string; weight: number; value: number }>>((acc, item) => {
         const rate = Number(item.treatment_rate || 0);
         const key = `${item.waste_residue_id || "sem-residuo"}:${rate}`;
@@ -1645,7 +1649,7 @@ export function BillingV2Module() {
     });
   };
   const resultCycles = clientCycles
-    .filter((item) => !cycleBranchId || item.branch_id === cycleBranchId)
+    .filter((item) => !cycleBranchId || branchKey(item.branch_id) === cycleBranchId)
     .filter((item) => (resultStatusFilter === "all" ? true : resultStatusFilter === "closed" ? item.status === "closed" : item.status !== "closed"))
     .slice()
     .sort((a, b) => ((a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0)) || (Number(a.bulletin_number || 0) - Number(b.bulletin_number || 0)));
@@ -1797,7 +1801,7 @@ export function BillingV2Module() {
             {clientHasNoBranches ? <Input value="Matriz — sem filial/pátio cadastrada" disabled /> : <Select value={cycleBranchId} onValueChange={(value) => { setCycleBranchId(value); }}>
               <SelectTrigger className="min-w-0 [&>span]:min-w-0"><SelectValue placeholder="Selecionar" /></SelectTrigger>
               <SelectContent>
-                {branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>{branches.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
               </SelectContent>
             </Select>}
           </Field>
@@ -1849,7 +1853,7 @@ export function BillingV2Module() {
         <Card className="order-1 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="truncate font-semibold" title={`${clientName}${cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}`}>Resultado da busca · {clientName}{cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
+              <h2 className="truncate font-semibold" title={`${clientName}${cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}`}>Resultado da busca · {clientName}{cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : ""}</h2>
               <p className="mt-1 text-sm text-muted-foreground">Boletins encontrados para o cliente e pátio selecionados.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1876,7 +1880,7 @@ export function BillingV2Module() {
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="w-10 p-2"><Checkbox aria-label="Selecionar todos os boletins encontrados" checked={resultCycles.length > 0 && resultCycles.every((item) => selectedBulkCycleIds.includes(item.id))} onCheckedChange={(checked) => toggleAllResultCycles(Boolean(checked))} /></th><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2">Finalizado em</th><th className="p-2" /></tr></thead><tbody>
-              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
+              {resultCycles.length ? resultCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2"><Checkbox aria-label={`Selecionar boletim ${bulletinNumber(item.bulletin_number)}`} checked={selectedBulkCycleIds.includes(item.id)} onCheckedChange={(checked) => toggleBulkCycle(item.id, Boolean(checked))} /></td><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2 font-medium"><span className="block max-w-72 truncate" title={branchName(item.branch_id)}>{branchName(item.branch_id)}</span></td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2">{item.finalized_at ? new Date(item.finalized_at).toLocaleDateString("pt-BR") : "—"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button variant="outline" size="sm" onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setTab("locacoes"); }}><Pencil className="mr-2 h-3.5 w-3.5" />Editar</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Nenhum boletim criado para esta filial/pátio.</td></tr>}
             </tbody></table>
           </div>
         </Card>
@@ -1893,9 +1897,9 @@ export function BillingV2Module() {
               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cycle?.status === "closed" ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-800"}`}>
                 {cycle?.status === "closed" ? "Finalizado" : "Em edição"}
               </span>
-              <span className="min-w-0 truncate text-sm text-muted-foreground" title={`${clientName} · ${branch(cycle?.branch_id || "")?.name || "Boletim legado"}`}>
+              <span className="min-w-0 truncate text-sm text-muted-foreground" title={`${clientName} · ${cycle?.branch_id ? (branch(cycle.branch_id)?.name || "Boletim legado") : "Matriz (sem filial/pátio)"}`}>
                 <span className="font-medium text-foreground">{clientName}</span>
-                {" · "}{branch(cycle?.branch_id || "")?.name || "Boletim legado"}
+                {" · "}{cycle?.branch_id ? (branch(cycle.branch_id)?.name || "Boletim legado") : "Matriz (sem filial/pátio)"}
                 {" · "}{cycle ? `${new Date(`${cycle.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${cycle.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}
               </span>
             </div>
@@ -1910,7 +1914,7 @@ export function BillingV2Module() {
               <TabsTrigger value="boletim" className="rounded-lg data-[state=active]:shadow-sm">Boletim</TabsTrigger>
               <TabsTrigger value="emitidos" className="rounded-lg data-[state=active]:shadow-sm">Emissões</TabsTrigger>
             </TabsList>
-            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(item.branch_id || ""); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
+            <TabsContent value="historico" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins do cliente</h2><p className="mt-1 text-sm text-muted-foreground">Cada boletim possui número próprio e pode ser reaberto para edição.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Período</th><th className="p-2">Situação</th><th className="p-2" /></tr></thead><tbody>{clientCycles.map((item) => <tr key={item.id} className="border-b"><td className="p-2 font-semibold">{bulletinNumber(item.bulletin_number)}</td><td className="p-2">{new Date(`${item.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a {new Date(`${item.period_end}T12:00:00`).toLocaleDateString("pt-BR")}</td><td className="p-2">{item.status === "closed" ? "Finalizado" : "Em edição"}</td><td className="p-2 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant={item.id === cycleId ? "secondary" : "outline"} onClick={() => { setCycleId(item.id); setCycleBranchId(branchKey(item.branch_id)); setResidueFilterId("all"); setTab("locacoes"); }}>Abrir</Button><Button variant="ghost" size="icon" aria-label={`Excluir boletim ${bulletinNumber(item.bulletin_number)}`} onClick={() => void deleteCycle(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div></Card></TabsContent>
             <TabsContent value="emitidos" className="space-y-4"><Card className="p-5"><h2 className="font-semibold">Boletins emitidos</h2><p className="mt-1 text-sm text-muted-foreground">Emissões filtradas por resíduo recebem sufixo próprio e podem ser publicadas separadamente no portal.</p><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-sm"><thead><tr className="border-b text-left text-muted-foreground"><th className="p-2">Número</th><th className="p-2">Filial/pátio</th><th className="p-2">Período / resíduo</th><th className="p-2">Finalizado em</th><th className="p-2 text-right">Portal do cliente</th></tr></thead><tbody>{emittedGroups.length ? emittedGroups.map((group) => { const expanded = expandedBMs.includes(group.cycleId); const hasEmissions = group.emissions.length > 0; const headerNumber = group.parent ? bulletinNumber(group.parent.bulletin_number) : `#${String(group.major).padStart(3, "0")}`; const closedParent = Boolean(group.parent && group.parent.status === "closed"); return <Fragment key={group.cycleId}><tr className="border-b"><td className="p-2 font-semibold"><div className="flex items-center gap-1.5">{hasEmissions ? <button type="button" aria-label={expanded ? "Recolher recortes" : "Expandir recortes"} onClick={() => setExpandedBMs((current) => current.includes(group.cycleId) ? current.filter((id) => id !== group.cycleId) : [...current, group.cycleId])} className="text-muted-foreground transition-colors hover:text-primary">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button> : <span className="inline-block w-4" />}{headerNumber}{hasEmissions ? <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{group.emissions.length} recorte(s)</span> : null}</div></td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{group.parent ? `${new Date(`${group.parent.period_start}T12:00:00`).toLocaleDateString("pt-BR")} a ${new Date(`${group.parent.period_end}T12:00:00`).toLocaleDateString("pt-BR")}` : "—"}</td><td className="p-2">{closedParent && group.parent?.finalized_at ? new Date(group.parent.finalized_at).toLocaleDateString("pt-BR") : group.parent ? "Em edição" : "—"}</td><td className="p-2 text-right">{group.parent ? <div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver boletim ${headerNumber}`} aria-label={`Ver boletim ${headerNumber}`} onClick={() => void viewBulletin(group.parent!, "all")}><Eye className="h-4 w-4" /></Button>{closedParent ? <label className="inline-flex cursor-pointer items-center justify-end gap-2 text-sm"><Checkbox checked={!!group.parent.client_portal_visible} disabled={setCyclePortalVisibility.isPending} onCheckedChange={(checked) => setCyclePortalVisibility.mutate({ id: group.parent!.id, visible: Boolean(checked) })} />{group.parent.client_portal_visible ? "Publicado" : "Não publicado"}</label> : <span className="text-sm text-muted-foreground">Em edição</span>}</div> : <span className="text-sm text-muted-foreground">—</span>}</td></tr>{expanded ? group.emissions.map((em) => <tr key={em.id} className="border-b bg-muted/20"><td className="p-2 pl-8 font-semibold">#{em.display_number}</td><td className="p-2">{group.parent ? branchName(group.parent.branch_id) : "—"}</td><td className="p-2">{residues.find((residue) => residue.id === em.waste_residue_id)?.name || "Resíduo"}</td><td className="p-2">{new Date(em.finalized_at).toLocaleDateString("pt-BR")}</td><td className="p-2 text-right"><div className="inline-flex items-center justify-end gap-2"><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Ver emissão #${em.display_number}`} aria-label={`Ver emissão #${em.display_number}`} disabled={!group.parent} onClick={() => { if (group.parent) void viewBulletin(group.parent, em.waste_residue_id, `#${em.display_number}`); }}><Eye className="h-4 w-4" /></Button><label className="inline-flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={!!em.client_portal_visible} disabled={setResidueEmissionPortalVisibility.isPending} onCheckedChange={(checked) => setResidueEmissionPortalVisibility.mutate({ id: em.id, visible: Boolean(checked) })} />{em.client_portal_visible ? "Publicado" : "Não publicado"}</label><Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={`Excluir emissão #${em.display_number}`} aria-label={`Excluir emissão #${em.display_number}`} disabled={deleteResidueEmission.isPending} onClick={() => { if (window.confirm(`Excluir a emissão #${em.display_number}? Essa ação remove apenas este recorte por resíduo.`)) deleteResidueEmission.mutate({ id: em.id, cycleId: em.cycle_id }); }}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>) : null}</Fragment>; }) : <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Finalize um boletim ou uma emissão por resíduo para disponibilizá-lo no portal.</td></tr>}</tbody></table></div></Card></TabsContent>
             <TabsContent value="locacoes" className="grid gap-4 xl:grid-cols-[minmax(360px,440px)_1fr] xl:items-start">
               <Card className="p-5 xl:sticky xl:top-40">
@@ -1932,6 +1936,7 @@ export function BillingV2Module() {
                         <SelectValue placeholder="Selecionar" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>
                         {branches.map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {item.name}
@@ -1953,7 +1958,7 @@ export function BillingV2Module() {
                       </SelectTrigger>
                       <SelectContent>
                         {equipment
-                          .filter((item) => item.branch_id === placementForm.branchId)
+                          .filter((item) => branchKey(item.branch_id) === placementForm.branchId)
                           .map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {equipmentName(item)}
@@ -2056,6 +2061,7 @@ export function BillingV2Module() {
                         <SelectValue placeholder="Selecionar" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={BRANCH_MATRIZ}>Matriz (sem filial/pátio)</SelectItem>
                         {branches.map((item) => (
                           <SelectItem key={item.id} value={item.id}>
                             {item.name}
@@ -2415,7 +2421,7 @@ export function BillingV2Module() {
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{clientName}</span>
-              {cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : clientHasNoBranches ? " · Matriz" : ""}
+              {cycleBranchId === BRANCH_MATRIZ ? " · Matriz (sem filial/pátio)" : cycleBranchId ? ` · ${branch(cycleBranchId)?.name || "filial/pátio"}` : clientHasNoBranches ? " · Matriz" : ""}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Início do boletim">
