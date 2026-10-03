@@ -545,6 +545,14 @@ export function BillingV2Module() {
       .filter((service, index, all) => all.findIndex((item) => item.id === service.id) === index)
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [clientServices, outsourcedCompanyServices]);
+  const clientConfiguredServiceIds = useMemo(
+    () => new Set([
+      ...clientServices.map((service) => service.id),
+      ...clientServiceRates.map((rate) => rate.waste_service_id),
+      ...clientServiceRateOverrides.map((rate) => rate.waste_service_id),
+    ]),
+    [clientServices, clientServiceRates, clientServiceRateOverrides],
+  );
   const serviceAmountForClient = (serviceId: string) => {
     const branchId = cycle?.branch_id || null;
     const companyId = cycle?.issuer_type === "outsourced" ? cycle.outsourced_company_id || null : null;
@@ -716,7 +724,12 @@ export function BillingV2Module() {
         .eq("id", cycleId);
       if (error) throw error;
     },
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] }); toast.success("Emissor do demonstrativo salvo."); },
+    onSuccess: () => {
+      setSelectedServiceId("");
+      setServiceAmount("0");
+      void qc.invalidateQueries({ queryKey: ["billing-v2-cycles", clientId] });
+      toast.success("Emissor do demonstrativo salvo.");
+    },
     onError: (error: Error) => toast.error(error.message),
   });
   const addCycleService = useMutation({
@@ -1353,16 +1366,37 @@ export function BillingV2Module() {
   const documentThirdParty = issuerCompany || outsourcedCompanies.find((company) =>
     filteredServices.some((service) => service.outsourced_company_id === company.id),
   );
-  const availableServices = services.filter((service) => {
-    if (cycle?.issuer_type !== "outsourced" || !cycle.outsourced_company_id) return true;
-    return outsourcedCompanyServices.some((link) =>
-      link.outsourced_company_id === cycle.outsourced_company_id && (
-        link.waste_service_id === service.id ||
-        serviceNameKey(link.waste_services?.name) === serviceNameKey(service.name)
-      )
-    );
-  }).filter((service) => branchKey(service.branch_id) === branchKey(cycle?.branch_id))
+  const availableServices = services
+    // Nunca mistura o catálogo de outro cliente no BM atual.
+    .filter((service) => clientConfiguredServiceIds.has(service.id))
+    .filter((service) => {
+      if (cycle?.issuer_type !== "outsourced" || !cycle.outsourced_company_id) return true;
+      return outsourcedCompanyServices.some((link) =>
+        link.outsourced_company_id === cycle.outsourced_company_id && (
+          link.waste_service_id === service.id ||
+          serviceNameKey(link.waste_services?.name) === serviceNameKey(service.name)
+        )
+      );
+    })
+    .filter((service) => {
+      const cycleBranchId = cycle?.branch_id || null;
+      const cycleCompanyId = cycle?.issuer_type === "outsourced" ? cycle.outsourced_company_id || null : null;
+      const baseScopeMatches = !service.branch_id || service.branch_id === cycleBranchId;
+      const matchingOverride = clientServiceRateOverrides.some((rate) =>
+        rate.waste_service_id === service.id &&
+        (!rate.branch_id || rate.branch_id === cycleBranchId) &&
+        (cycleCompanyId ? !rate.outsourced_company_id || rate.outsourced_company_id === cycleCompanyId : !rate.outsourced_company_id),
+      );
+      return baseScopeMatches || matchingOverride;
+    })
     .filter((service) => !cycleServices.some((item) => item.waste_service_id === service.id));
+  const selectedServiceStillAvailable = availableServices.some((service) => service.id === selectedServiceId);
+  useEffect(() => {
+    if (selectedServiceId && !selectedServiceStillAvailable) {
+      setSelectedServiceId("");
+      setServiceAmount("0");
+    }
+  }, [selectedServiceId, selectedServiceStillAvailable]);
   const generatePdf = async (options?: { targetCycle: Cycle; placements: Placement[]; movements: Movement[]; services: CycleService[]; includeResidue?: string; bulletinLabel?: string; download?: boolean }) => {
     const printableCycle = options?.targetCycle || cycle;
     const pdfPlacements = options?.placements || filteredPlacements;
@@ -2312,10 +2346,12 @@ export function BillingV2Module() {
                     <Select value={selectedServiceId} onValueChange={(serviceId) => {
                       setSelectedServiceId(serviceId);
                       setServiceAmount(String(serviceAmountForClient(serviceId)));
-                    }}>
+                      }}>
                       <SelectTrigger><SelectValue placeholder={cycle?.issuer_type === "outsourced" && !issuerCompany ? "Selecione a empresa emissora primeiro" : "Selecionar serviço"} /></SelectTrigger>
                       <SelectContent>
-                        {availableServices.map((service) => <SelectItem key={service.id} value={service.id}>{service.name}</SelectItem>)}
+                        {availableServices.length
+                          ? availableServices.map((service) => <SelectItem key={service.id} value={service.id}>{service.name}</SelectItem>)
+                          : <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum serviço configurado para este cliente, emissor e filial/pátio.</div>}
                       </SelectContent>
                     </Select>
                   </Field>

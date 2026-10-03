@@ -575,6 +575,16 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
   const outsourcedCompanyForService = (serviceId: string) =>
     outsourcedCompanyServices.find((link) => link.waste_service_id === serviceId)
       ?.outsourced_company_id || "";
+  const outsourcedCompaniesForService = (serviceId: string) => {
+    const companyIds = outsourcedCompanyServices
+      .filter((link) => link.waste_service_id === serviceId)
+      .map((link) => link.outsourced_company_id);
+    const labels = Array.from(new Set(companyIds)).map((companyId) => {
+      const company = outsourcedCompanies.find((item) => item.id === companyId);
+      return company?.trade_name || company?.legal_name || "Terceirizada";
+    });
+    return labels.join(", ") || "Sem terceirizada";
+  };
   const serviceRateForClient = (serviceId: string) =>
     Number(clientServiceRates.find((rate) => rate.waste_service_id === serviceId)?.default_rate || 0);
   const refreshClient = () =>
@@ -779,9 +789,6 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
       if (editingService) {
         const { error } = await query.update({ name: serviceForm.name.trim(), branch_id: branchToDb(serviceForm.branchId) }).eq("id", editingService.id);
         if (error) throw error;
-        const { error: clearError } = await (supabase.from("outsourced_company_services" as any) as any)
-          .delete().eq("waste_service_id", serviceId);
-        if (clearError) throw clearError;
       } else {
         const existing = serviceForm.outsourcedCompanyId
           ? outsourcedCompanyServices.find((link) =>
@@ -1694,7 +1701,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
               <Field label="Valor para este cliente">
                 <Input type="number" min="0" step="0.01" value={serviceForm.rate} onChange={(e) => setServiceForm({ ...serviceForm, rate: e.target.value })} />
               </Field>
-              <Field label="Empresa terceirizada">
+              <Field label="Terceirizada inicial (opcional)">
                 <Select
                   value={serviceForm.outsourcedCompanyId || "none"}
                   onValueChange={(value) =>
@@ -1743,7 +1750,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             headers={["Serviço", "Empresa terceirizada", "Valor para este cliente", "Ações"]}
             rows={serviceCatalog.map((s) => [
               s.name,
-              outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(s.id))?.trade_name || outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(s.id))?.legal_name || "—",
+              outsourcedCompaniesForService(s.id),
               money(serviceRateForClient(s.id)),
               <div className="flex gap-1">
                 <Button
@@ -1983,23 +1990,24 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
             </TabsContent>
             <TabsContent value="servicos" className="space-y-4">
               <BillingImpactNote>
-                <strong>Alimenta o Faturamento →</strong> os serviços e valores cadastrados aqui aparecem na aba <strong>Boletim</strong> do boletim (seção “Emissão e serviços terceirizados”) e entram na linha <strong>Serviços</strong> do total do BM.
+                <span className="block font-semibold text-foreground">Como cadastrar um serviço</span>
+                <span className="mt-1 block"><strong>1. Serviço base:</strong> informe o serviço, a matriz/filial/pátio e o valor padrão.</span>
+                <span className="block"><strong>2. Valor específico (opcional):</strong> use somente se esse serviço tiver outro valor para determinada terceirizada ou filial/pátio. Nesse caso, o valor específico substitui o padrão apenas naquela combinação.</span>
+                <span className="mt-1 block text-xs">Exemplo: valor padrão R$ 300; Cortes no Pátio 1 por R$ 250. No BM da Cortes para o Pátio 1 será usado R$ 250; nos demais casos, R$ 300.</span>
               </BillingImpactNote>
-              <ServiceRateOverridesPanel
-                clientId={clientId}
-                services={serviceCatalog}
-                companies={outsourcedCompanies}
-                branches={branches.filter((branch) => branch.is_active)}
-              />
               <Card className="p-4">
-                <h2 className="font-semibold">
-                  {editingService ? "Editar serviço" : "Novo serviço"}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  O serviço terceirizado é único e fica disponível para todos os clientes. Defina abaixo o
-                  valor padrão somente para o cliente selecionado; no BM ele pode ser ajustado caso a caso.
-                </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">1</span>
+                  <div>
+                    <h2 className="font-semibold">
+                      {editingService ? "Editar serviço base" : "Cadastrar serviço base"}
+                    </h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      Informe o serviço, quem o executa, onde ele pode ser usado e seu valor padrão para este cliente.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_minmax(210px,1.2fr)_minmax(190px,1fr)_minmax(140px,0.7fr)_auto]">
                   <Field label="Nome do serviço">
                     <Input
                       value={serviceForm.name}
@@ -2008,10 +2016,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       }
                     />
                   </Field>
-                  <Field label="Valor para este cliente">
-                    <Input type="number" min="0" step="0.01" value={serviceForm.rate} onChange={(event) => setServiceForm({ ...serviceForm, rate: event.target.value })} />
-                  </Field>
-                  <Field label="Empresa terceirizada">
+                  <Field label="Terceirizada inicial (opcional)">
                     <Select
                       value={serviceForm.outsourcedCompanyId || "none"}
                       onValueChange={(value) => setServiceForm({ ...serviceForm, outsourcedCompanyId: value === "none" ? "" : value })}
@@ -2025,9 +2030,26 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       </SelectContent>
                     </Select>
                   </Field>
+                  <Field label="Matriz, filial ou pátio">
+                    <Select
+                      value={serviceForm.branchId || BRANCH_MATRIZ}
+                      onValueChange={(value) => setServiceForm({ ...serviceForm, branchId: value === BRANCH_MATRIZ ? "" : value })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={BRANCH_MATRIZ}>Matriz (serviço geral)</SelectItem>
+                        {branches.filter((branch) => branch.is_active).map((branch) => (
+                          <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Valor padrão">
+                    <Input type="number" min="0" step="0.01" value={serviceForm.rate} onChange={(event) => setServiceForm({ ...serviceForm, rate: event.target.value })} />
+                  </Field>
                   <div className="flex gap-2 self-end">
                     <Button onClick={() => addService.mutate()}>
-                      {editingService ? "Salvar" : "Cadastrar"}
+                      {editingService ? "Salvar serviço" : "Cadastrar serviço"}
                     </Button>
                     {editingService && (
                       <Button
@@ -2044,10 +2066,11 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                 </div>
               </Card>
               <ActionTable
-                headers={["Serviço", "Empresa terceirizada", "Valor para este cliente", "Ações"]}
+                headers={["Serviço", "Empresa terceirizada", "Abrangência", "Valor padrão", "Ações"]}
                 rows={serviceCatalog.map((service) => [
                   service.name,
-                  outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(service.id))?.trade_name || outsourcedCompanies.find((company) => company.id === outsourcedCompanyForService(service.id))?.legal_name || "—",
+                  outsourcedCompaniesForService(service.id),
+                  branches.find((branch) => branch.id === service.branch_id)?.name || "Matriz (serviço geral)",
                   money(serviceRateForClient(service.id)),
                   <div className="flex gap-1">
                     <Button
@@ -2056,7 +2079,7 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                       title="Editar"
                       onClick={() => {
                         setEditingService(service);
-                        setServiceForm({ name: service.name, outsourcedCompanyId: outsourcedCompanyForService(service.id), rate: String(serviceRateForClient(service.id)) });
+                        setServiceForm({ name: service.name, outsourcedCompanyId: outsourcedCompanyForService(service.id), rate: String(serviceRateForClient(service.id)), branchId: branchKey(service.branch_id) });
                       }}
                     >
                       <Pencil className="h-4 w-4" />
@@ -2071,6 +2094,12 @@ export function WasteManagementModule({ portal = false }: { portal?: boolean }) 
                     </Button>
                   </div>,
                 ])}
+              />
+              <ServiceRateOverridesPanel
+                clientId={clientId}
+                services={serviceCatalog}
+                companies={outsourcedCompanies}
+                branches={branches.filter((branch) => branch.is_active)}
               />
             </TabsContent>
             <TabsContent value="residuos" className="space-y-4">
@@ -3619,6 +3648,7 @@ function ServiceRateOverridesPanel({
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["waste-client-service-rate-overrides", clientId] });
     void qc.invalidateQueries({ queryKey: ["billing-v2-client-service-rate-overrides", clientId] });
+    void qc.invalidateQueries({ queryKey: ["outsourced-company-services"] });
   };
   const save = useMutation({
     mutationFn: async () => {
@@ -3627,6 +3657,14 @@ function ServiceRateOverridesPanel({
       if (!Number.isFinite(parsedRate) || parsedRate < 0) throw Error("Informe um valor válido.");
       const scopedCompanyId = companyId === "all" ? null : companyId;
       const scopedBranchId = branchId === "all" ? null : branchId;
+      if (scopedCompanyId) {
+        const { error: linkError } = await (supabase.from("outsourced_company_services" as any) as any)
+          .upsert(
+            { outsourced_company_id: scopedCompanyId, waste_service_id: serviceId },
+            { onConflict: "outsourced_company_id,waste_service_id" },
+          );
+        if (linkError) throw linkError;
+      }
       const existing = overrides.find(
         (item) =>
           item.waste_service_id === serviceId &&
@@ -3678,11 +3716,16 @@ function ServiceRateOverridesPanel({
     id ? branches.find((branch) => branch.id === id)?.name || "Filial/pátio" : "Todas as filiais/pátios";
   return (
     <Card className="p-4">
-      <h2 className="font-semibold">Valores por cliente, empresa e filial/pátio</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        O cliente selecionado acima é a base da regra. Use esta configuração quando o mesmo serviço tiver outro valor para uma terceirizada ou filial/pátio. No BM, o sistema prioriza filial + empresa, depois empresa, filial e por fim o valor geral do cliente.
-      </p>
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">2</span>
+        <div>
+          <h2 className="font-semibold">Definir valor específico</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Use somente quando o valor padrão mudar conforme a terceirizada ou a filial/pátio.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.25fr)_minmax(210px,1.15fr)_minmax(190px,1fr)_minmax(140px,0.7fr)_auto]">
         <Field label="Serviço">
           <Select value={serviceId} onValueChange={setServiceId}>
             <SelectTrigger><SelectValue placeholder="Selecionar serviço" /></SelectTrigger>
@@ -3710,20 +3753,52 @@ function ServiceRateOverridesPanel({
         <Field label="Valor unitário">
           <Input type="number" min="0" step="0.01" value={rate} onChange={(event) => setRate(event.target.value)} />
         </Field>
-        <Button className="self-end" onClick={() => save.mutate()} disabled={save.isPending}>Salvar valor</Button>
+        <Button className="self-end" onClick={() => save.mutate()} disabled={save.isPending}>Salvar valor específico</Button>
       </div>
-      <ActionTable
-        headers={["Serviço", "Empresa", "Filial/pátio", "Valor unitário", "Ações"]}
-        rows={overrides.map((item) => [
-          services.find((service) => service.id === item.waste_service_id)?.name || "Serviço removido",
-          labelCompany(item.outsourced_company_id),
-          labelBranch(item.branch_id),
-          money(item.default_rate),
-          <Button size="icon" variant="ghost" title="Excluir valor específico" onClick={() => remove.mutate(item.id)}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>,
-        ])}
-      />
+      <p className="mt-3 text-xs text-muted-foreground">
+        No BM, o valor mais específico é usado primeiro: terceirizada + filial/pátio, depois terceirizada, filial/pátio e, por último, o valor padrão.
+      </p>
+      <div className="mt-5 flex items-center justify-between border-t pt-4">
+        <h3 className="text-sm font-semibold">Valores específicos cadastrados</h3>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {overrides.length} {overrides.length === 1 ? "regra" : "regras"}
+        </span>
+      </div>
+      <div className="mt-2 overflow-x-auto rounded-xl border">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="border-b bg-muted/30 text-left text-muted-foreground">
+              <th className="p-3">Serviço</th>
+              <th className="p-3">Terceirizada</th>
+              <th className="p-3">Filial/pátio</th>
+              <th className="p-3">Valor</th>
+              <th className="w-16 p-3 text-center">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overrides.map((item) => (
+              <tr key={item.id} className="border-b last:border-0">
+                <td className="p-3 font-medium">{services.find((service) => service.id === item.waste_service_id)?.name || "Serviço removido"}</td>
+                <td className="p-3">{labelCompany(item.outsourced_company_id)}</td>
+                <td className="p-3">{labelBranch(item.branch_id)}</td>
+                <td className="p-3 font-semibold">{money(item.default_rate)}</td>
+                <td className="p-2 text-center">
+                  <Button size="icon" variant="ghost" title="Excluir valor específico" onClick={() => remove.mutate(item.id)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {!overrides.length && (
+              <tr>
+                <td colSpan={5} className="p-6 text-center text-muted-foreground">
+                  Nenhum valor específico cadastrado. O BM usará o valor padrão do serviço.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }
